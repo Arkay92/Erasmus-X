@@ -23,3 +23,7 @@ TEMPERATURE = 0.1
 
 # Semantic Cache Configuration
 CACHE_THRESHOLD = 0.98
+
+# Prompt Compression (McMenemy Strategy)
+ENABLE_PROMPT_COMPRESSION = True
+COMPRESSION_DEBUG = True  # Set to True to see char savings in console

@@ -1,6 +1,7 @@
 import re
 from openai import OpenAI
 from core import config, prompts
+from core.compressor import PromptCompressor
 
 class NeurosymbolicAgent:
     def __init__(self, brain, kg, searcher):
@@ -15,6 +16,7 @@ class NeurosymbolicAgent:
         self.kg = kg
         self.searcher = searcher
         self.client = OpenAI(base_url=config.API_BASE_URL, api_key=config.API_KEY)
+        self.compressor = PromptCompressor(enabled=config.ENABLE_PROMPT_COMPRESSION)
         self.messages = []
         self.last_subject = None
 
@@ -113,10 +115,21 @@ class NeurosymbolicAgent:
                 if web_text:
                     context_blocks.append(prompts.CONTEXT_SOURCE_START + web_text[:500] + prompts.CONTEXT_SOURCE_END)
 
+        # --- PHASE 3.5: PROMPT COMPRESSION ---
+        final_context_blocks = []
+        for block in context_blocks:
+            c_block = self.compressor.compress(block)
+            final_context_blocks.append(c_block)
+            
+            if config.COMPRESSION_DEBUG:
+                savings, pct = self.compressor.get_savings(block, c_block)
+                if savings > 0:
+                    print(f"[*] Compressed block: saved {savings} chars ({pct:.1f}%)")
+        
         # --- PHASE 4: GENERATION ---
         current_prompt = prompts.SYSTEM_PROMPT + "\n\n"
-        if context_blocks:
-            current_prompt += "\n".join(context_blocks) + "\n\n"
+        if final_context_blocks:
+            current_prompt += "\n".join(final_context_blocks) + "\n\n"
         current_prompt += f"USER QUESTION: {user_input}"
 
         # Keep history tight
