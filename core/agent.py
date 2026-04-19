@@ -61,14 +61,28 @@ class NeurosymbolicAgent:
             
             return raw_response, clean_ans
 
-        # --- PHASE 1: AGNOSTIC QUERY BRAIN ---
-        current_subject, is_dynamic = self._resolve_context(user_input)
+        # --- PHASE 1: ULTRA-FAST INTENT ROUTING (HDC) ---
+        intent, confidence = self.brain.classify_intent(user_input)
         
-        # Context expansion for follow-up queries
-        search_query = user_input
+        # Approximative context resolution (lossy but fast)
+        # Search for follow-up pronouns
         pronouns = ['it', 'they', 'them', 'him', 'her', 'this', 'that']
-        is_followup = len(current_subject.split()) < 2 or any(p in user_input.lower() for p in pronouns)
+        is_followup = len(user_input.split()) < 3 or any(p in user_input.lower() for p in pronouns)
         
+        if is_followup and self.last_subject:
+            current_subject = self.last_subject
+            is_dynamic = (intent == "SEARCH") or (confidence < 0.35) # Err on the side of search for follow-ups
+        else:
+            # Fallback to Deep reasoning only if HDC is uncertain
+            if confidence < 0.30:
+                print("[*] Transitioning to Deep Lane for uncertainty resolution...")
+                current_subject, is_dynamic = self._resolve_context(user_input)
+            else:
+                current_subject = user_input
+                is_dynamic = (intent == "SEARCH")
+
+        # Context expansion for actual search string
+        search_query = user_input
         if self.last_subject and is_followup:
             search_query = f"{user_input} (Context: {self.last_subject})"
         

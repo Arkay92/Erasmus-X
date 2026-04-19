@@ -16,6 +16,9 @@ class HypervectorDB:
         self.prompt_cache = {}
         self.cache_tensor = None
         
+        # HDC Intent Routing (Fast Reasoning Lane)
+        self.intent_centers = None # Class centroids for SEARCH vs RECALL intent
+        
         # Expanded ASCII character alphabet for robust encoding
         self.alphabet = "abcdefghijklmnopqrstuvwxyz0123456789 .,!?-()\":;'"
         self.char_to_idx = {c: i for i, c in enumerate(self.alphabet)}
@@ -97,6 +100,38 @@ class HypervectorDB:
             return self.prompt_cache[matched_query]
         return None
 
+    def _init_intents(self):
+        """Pre-seeds the Brain with class centroids for SEARCH vs RECALL."""
+        print("[*] Training high-speed intent routing...")
+        # 1. Search Intent (Dynamic/Discovery/News)
+        search_seeds = ["latest news", "current status", "update on", "what is happening", "latest results", "current price", "news about"]
+        search_v = torch.stack([self.encode(s) for s in search_seeds])
+        search_centroid = torchhd.functional.multiset(search_v)
+        
+        # 2. Recall Intent (Static/Facts/Identity)
+        recall_seeds = ["who is", "what is", "about the", "tell me about", "history of", "capital of", "define"]
+        recall_v = torch.stack([self.encode(r) for r in recall_seeds])
+        recall_centroid = torchhd.functional.multiset(recall_v)
+        
+        self.intent_centers = torch.stack([search_centroid, recall_centroid])
+        self.save()
+
+    def classify_intent(self, query):
+        """
+        High-speed HDC intent classification.
+        Returns 'SEARCH' or 'RECALL' and the confidence score.
+        """
+        if self.intent_centers is None:
+            self._init_intents()
+            
+        q_v = self.encode(query)
+        # Cosine similarity against the two class centroids
+        sims = torchhd.functional.cosine_similarity(q_v, self.intent_centers)
+        
+        score, idx = torch.max(sims, dim=0)
+        label = "SEARCH" if idx.item() == 0 else "RECALL"
+        return label, score.item()
+
     def search(self, query, threshold=0.10, top_k=3):
         if not self.documents or self.memory_tensor is None:
             return []
@@ -127,7 +162,8 @@ class HypervectorDB:
             "graph_data": self.graph_data,
             "convo_chain": self.convo_chain,
             "prompt_cache": self.prompt_cache,
-            "cache_tensor": self.cache_tensor
+            "cache_tensor": self.cache_tensor,
+            "intent_centers": self.intent_centers
         }
         torch.save(data, self.filename)
 
@@ -148,6 +184,7 @@ class HypervectorDB:
                 self.convo_chain = data.get("convo_chain", [])
                 self.prompt_cache = data.get("prompt_cache", {})
                 self.cache_tensor = data.get("cache_tensor")
+                self.intent_centers = data.get("intent_centers")
             except Exception as e:
                 print(f"[Memory Load Error] {e}. Attempting recovery.")
 
