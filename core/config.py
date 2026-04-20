@@ -18,6 +18,8 @@ TOP_K_RESULTS = 3
 
 # Agent Configuration
 MAX_HISTORY_LEN = 2
+MAX_CONTEXT_HISTORY_CHARS = 4000 # Trigger for "Spin Down"
+MAX_RETRIEVED_MEMORIES = 2      # How many past summaries to reload
 MAX_TOKENS_GENERATION = 1024
 TEMPERATURE = 0.1
 

@@ -40,7 +40,7 @@ def check(label, condition, detail=""):
     return condition
 
 def make_brain(name="test"):
-    brain = HypervectorDB(filename=f"memories/test_{name}.pt", dim=2000)
+    brain = HypervectorDB(filename=f"memories/scratch/test_{name}.pt", dim=2000)
     kg = KnowledgeGraph(storage=brain)
     return brain, kg
 
@@ -278,8 +278,8 @@ def test_full_project_mode():
     SKIP_LABELS = [
         "project directory created in scratch/",
         "PLAN.md written inside project dir",
-        "2+ Python source files created",
-        "main.py has valid Python syntax",
+        "package.json exists and is valid JSON",
+        "App Router page structure created (layout.tsx/page.tsx)",
         "brain has project documents after build",
         "project content semantically searchable in brain",
     ]
@@ -292,11 +292,11 @@ def test_full_project_mode():
     before_dirs = set(d for d in os.listdir(scratch_root) if d.startswith("project_"))
 
     prompt = (
-        "Create a Project: 'Task Tracker'. "
-        "Build a multi-file Python app with: "
-        "main.py (CLI entry point that adds and lists tasks), "
-        "db.py (SQLite persistence with add_task and get_tasks), "
-        "and a PLAN.md describing the architecture."
+        "Create a Project: 'Full Stack Next.js Portal'. "
+        "Build a modern Next.js 14+ application using the App Router. "
+        "Include a package.json, a Tailwind-enabled layout.tsx, "
+        "a main page.tsx with a 'Hello World' hero section, "
+        "and an API route in app/api/status/route.ts."
     )
     print(f"   Sending: {prompt[:90]}...")
 
@@ -327,35 +327,43 @@ def test_full_project_mode():
         return
 
     proj_dir = os.path.join(scratch_root, new_dirs[-1])
-    files_in_proj = os.listdir(proj_dir)
+    
+    # Recursive file list to handle app/ structure
+    all_files = []
+    for root, dirs, files_in_dir in os.walk(proj_dir):
+        for f in files_in_dir:
+            rel_path = os.path.relpath(os.path.join(root, f), proj_dir)
+            all_files.append(rel_path.replace("\\", "/"))
+            
     print(f"   Dir : {new_dirs[-1]}")
-    print(f"   Files: {files_in_proj}")
+    print(f"   Files found: {all_files}")
 
     # ── 2. PLAN.md exists ────────────────────────────────────────────────────
-    check("PLAN.md written inside project dir", "PLAN.md" in files_in_proj,
-          str(files_in_proj))
+    check("PLAN.md written inside project dir", "PLAN.md" in all_files,
+          str(all_files))
 
-    # ── 3. 2+ Python source files ────────────────────────────────────────────
-    py_files = [f for f in files_in_proj if f.endswith(".py")]
-    check("2+ Python source files created", len(py_files) >= 2,
-          f"found: {py_files}")
-
-    # ── 4. main.py has valid Python syntax ───────────────────────────────────
-    main_path = os.path.join(proj_dir, "main.py")
-    if os.path.exists(main_path):
+    # ── 3. package.json exists and is valid ──────────────────────────────────
+    pkg_path = os.path.join(proj_dir, "package.json")
+    pkg_ok = False
+    if "package.json" in all_files:
         try:
-            result = subprocess.run(
-                ["python", "-c",
-                 f"import ast; ast.parse(open(r'{main_path}').read()); print('OK')"],
-                capture_output=True, text=True, timeout=10
-            )
-            syntax_ok = result.returncode == 0 and "OK" in result.stdout
-            check("main.py has valid Python syntax", syntax_ok,
-                  result.stderr[:120] if not syntax_ok else "syntax OK")
+            with open(pkg_path, 'r', encoding='utf-8') as f:
+                pkg_data = json.load(f)
+            pkg_ok = "next" in str(pkg_data.get("dependencies", {}))
+            check("package.json exists and is valid JSON", pkg_ok, 
+                  f"Keys found: {list(pkg_data.keys())}" if pkg_ok else "No 'next' in deps")
         except Exception as e:
-            check("main.py has valid Python syntax", False, str(e))
+            check("package.json exists and is valid JSON", False, str(e))
     else:
-        check("main.py has valid Python syntax", False, "main.py not found in project dir")
+        check("package.json exists and is valid JSON", False, "package.json not found")
+
+    # ── 4. App Router structure ──────────────────────────────────────────────
+    has_layout = any("layout.tsx" in f for f in all_files)
+    has_page = any("page.tsx" in f for f in all_files)
+    has_api = any("api/status/route.ts" in f for f in all_files)
+    check("App Router page structure created (layout.tsx/page.tsx/api)", 
+          has_layout and has_page and has_api, 
+          f"Layout: {has_layout}, Page: {has_page}, API: {has_api}")
 
     # ── 5. Brain has project documents ───────────────────────────────────────
     check("brain has project documents after build",
@@ -363,7 +371,7 @@ def test_full_project_mode():
           f"{len(brain.documents)} docs")
 
     # ── 6. Project content semantically searchable ────────────────────────────
-    res = brain.search("task tracker sqlite", threshold=0.05, top_k=3)
+    res = brain.search("next.js app router architecture", threshold=0.05, top_k=3)
     check("project content semantically searchable in brain",
           len(res) > 0,
           str([r[1][:60] for r in res]))

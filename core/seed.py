@@ -135,7 +135,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, default=None, help="Limit the number of questions to process")
     args = parser.parse_args()
     
-    curriculum_path = "questions/world_curriculum.md"
+    curriculum_path = "shards/questions/world_curriculum.md"
     engine = SeedingEngine(curriculum_path)
     
     if not engine.questions:
