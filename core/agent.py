@@ -1,4 +1,6 @@
 import re
+import subprocess
+import os
 from openai import OpenAI
 from core import config, prompts
 from core.compressor import PromptCompressor
@@ -197,17 +199,103 @@ class NeurosymbolicAgent:
             # 4. Add to Semantic Prompt Cache
             self.brain.add_to_cache(user_input, raw_response, clean_ans)
             
-            # 5. Extract and Save Files to Scratch
-            self._extract_and_save_files(raw_response)
+            # --- PHASE 6: AUTONOMOUS TEST-EDIT LOOP ---
+            final_response, final_clean = self._autonomous_coding_loop(user_input, messages, raw_response)
             
-            return raw_response, clean_ans
+            return final_response, final_clean
 
         except Exception as e:
             return f"[Error during generation: {e}]", None
 
+    def _autonomous_coding_loop(self, user_input, messages, raw_response):
+        """Iteratively tests and fixes code blocks."""
+        attempts = 0
+        max_attempts = 5
+        current_response = raw_response
+        
+        while attempts < max_attempts:
+            files = self._extract_and_save_files(current_response)
+            if not files:
+                return current_response, re.sub(r'\[FACT\].*', '', current_response).strip()
+
+            print(f"[*] Autonomous Testing: Verifying {len(files)} files...")
+            
+            all_success = True
+            test_results = []
+            
+            for f in files:
+                success, output = self._run_test(f)
+                test_results.append(f"File: {f} | Success: {success}\nOutput:\n{output}")
+                if not success:
+                    all_success = False
+            
+            result_summary = "\n\n".join(test_results)
+            
+            if all_success:
+                print("[+] Autonomous Testing: All tests PASSED.")
+                # Final pass to let the model review the output
+                review_prompt = prompts.CODE_REVIEW_PROMPT.format(test_output=result_summary)
+                messages.append({"role": "user", "content": review_prompt})
+                
+                response = self.client.chat.completions.create(
+                    model=config.MODEL_NAME,
+                    messages=messages,
+                    temperature=config.TEMPERATURE,
+                    max_tokens=config.MAX_TOKENS_GENERATION
+                )
+                final_response = response.choices[0].message.content
+                return final_response, re.sub(r'\[FACT\].*', '', final_response).strip()
+            
+            # If we reached here, something failed
+            attempts += 1
+            print(f"[!] Autonomous Testing: Test FAILED (Attempt {attempts}/{max_attempts})")
+            
+            if attempts == 3:
+                print("[*] Autonomous Search: Consulting the web for coding help...")
+                search_query = f"how to fix python error in {user_input}: {result_summary[:200]}"
+                web_help = self.searcher.search(search_query)
+                error_content = prompts.CODE_ERROR_PROMPT.format(error_output=result_summary)
+                if web_help:
+                    error_content += f"\n\nSEARCH RESULTS HELP:\n{web_help[:500]}"
+            else:
+                error_content = prompts.CODE_ERROR_PROMPT.format(error_output=result_summary)
+            
+            messages.append({"role": "user", "content": error_content})
+            
+            print("Gemma is re-thinking (Self-Correction)...", flush=True)
+            response = self.client.chat.completions.create(
+                model=config.MODEL_NAME,
+                messages=messages,
+                temperature=config.TEMPERATURE,
+                max_tokens=config.MAX_TOKENS_GENERATION
+            )
+            current_response = response.choices[0].message.content
+
+        return current_response, re.sub(r'\[FACT\].*', '', current_response).strip()
+
+    def _run_test(self, filename):
+        """Executes a saved script and returns (success, output)."""
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        filepath = os.path.join(root_dir, 'scratch', filename)
+        
+        try:
+            # Run the generated script
+            run_res = subprocess.run(
+                ["python", filepath], 
+                capture_output=True, 
+                text=True, 
+                timeout=15,
+                cwd=root_dir
+            )
+            output = run_res.stdout.strip() or run_res.stderr.strip()
+            return (run_res.returncode == 0), output
+        except subprocess.TimeoutExpired:
+            return False, "Error: Execution timed out (15s limit)."
+        except Exception as e:
+            return False, f"System Error executing script: {str(e)}"
+
     def _extract_and_save_files(self, text):
         """Finds [FILE: name] tags and saves code blocks to scratch/."""
-        import os
         pattern = r"\[FILE:\s*(.+?)\]\s*[\n\s]*```[a-z]*\n(.+?)(?:\n?```|$)"
         matches = re.finditer(pattern, text, re.DOTALL)
         
@@ -215,6 +303,7 @@ class NeurosymbolicAgent:
         scratch_dir = os.path.join(root_dir, 'scratch')
         os.makedirs(scratch_dir, exist_ok=True)
         
+        saved_files = []
         for match in matches:
             filename = match.group(1).strip()
             code = match.group(2)
@@ -222,9 +311,11 @@ class NeurosymbolicAgent:
             try:
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(code)
-                print(f"\n[*] Autonomous Coding: Saved {filename} to scratch/")
+                print(f"[*] Autonomous Coding: Saved {filename} to scratch/")
+                saved_files.append(filename)
             except Exception as e:
-                print(f"\n[!] Failed to save autonomous code: {e}")
+                print(f"[!] Failed to save autonomous code {filename}: {e}")
+        return saved_files
 
     def reset(self):
         """Clears the conversational history."""

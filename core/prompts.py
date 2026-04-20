@@ -23,3 +23,19 @@ Each question should explore the significance, application, or deeper implicatio
 Format your response accurately with Q1: and Q2: prefixes.
 
 Topic: """
+
+# Autonomous Coding Loop Prompts
+CODE_ERROR_PROMPT = """[CRITICAL: CODE ERROR DETECTED]
+Your previous code block failed execution. Review the error/output below and provide a FIX. 
+You MUST output the full corrected code block in your response.
+
+OUTPUT/ERROR:
+{error_output}
+"""
+
+CODE_REVIEW_PROMPT = """[TEST SUCCESSFUL]
+Your code ran successfully. Review the output below and finalize your answer.
+
+TEST OUTPUT:
+{test_output}
+"""
