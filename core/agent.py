@@ -4,6 +4,7 @@ import os
 from openai import OpenAI
 from core import config, prompts
 from core.compressor import PromptCompressor
+from utils.brain_sync import sync_project_dir, sync_from_sqlite, sync_from_json
 
 class NeurosymbolicAgent:
     def __init__(self, brain, kg, searcher):
@@ -196,25 +197,56 @@ class NeurosymbolicAgent:
             if web_text:
                 self.brain.add_document(f"Internet record: {web_text[:400]}")
             
-            # 4. Add to Semantic Prompt Cache
-            self.brain.add_to_cache(user_input, raw_response, clean_ans)
+            # --- PHASE 0.5: MANUAL BRAIN SYNC TRIGGER ---
+            # User can say "sync db <path>" or "sync json <path>" to ingest data
+            sync_match = re.match(r'sync\s+(db|json|sqlite)\s+(.+)', user_input.strip(), re.IGNORECASE)
+            if sync_match:
+                ftype, fpath = sync_match.group(1).lower(), sync_match.group(2).strip()
+                fpath = os.path.normpath(fpath)
+                if ftype in ('db', 'sqlite'):
+                    count = sync_from_sqlite(self.brain, self.kg, fpath)
+                else:
+                    count = sync_from_json(self.brain, self.kg, fpath)
+                msg = f"[BrainSync] Ingested {count} records from {os.path.basename(fpath)} into agent memory."
+                print(msg)
+                return msg, msg
+
+            # --- PHASE 0.6: PROJECT DETECTION ---
+            is_project = self._is_project_request(user_input)
+            project_dir = None
+            
+            if is_project:
+                print("[*] Project Mode Detected: Entering planning phase...")
+                project_dir, raw_response = self._project_planning_flow(user_input, messages)
+            else:
+                # 4. Add to Semantic Prompt Cache
+                self.brain.add_to_cache(user_input, raw_response, clean_ans)
             
             # --- PHASE 6: AUTONOMOUS TEST-EDIT LOOP ---
-            final_response, final_clean = self._autonomous_coding_loop(user_input, messages, raw_response)
+            final_response, final_clean = self._autonomous_coding_loop(user_input, messages, raw_response, base_dir=project_dir)
+            
+            # --- PHASE 7: POST-BUILD DATA SYNC ---
+            # After a project is built, auto-ingest any .db or .json data files
+            if project_dir:
+                root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+                full_project_path = os.path.join(root_dir, 'scratch', project_dir)
+                synced = sync_project_dir(self.brain, self.kg, full_project_path)
+                if synced > 0:
+                    print(f"[BrainSync] Auto-synced {synced} records from project '{project_dir}' into agent memory.")
             
             return final_response, final_clean
 
         except Exception as e:
             return f"[Error during generation: {e}]", None
 
-    def _autonomous_coding_loop(self, user_input, messages, raw_response):
+    def _autonomous_coding_loop(self, user_input, messages, raw_response, base_dir=None):
         """Iteratively tests and fixes code blocks."""
         attempts = 0
         max_attempts = 5
         current_response = raw_response
         
         while attempts < max_attempts:
-            files = self._extract_and_save_files(current_response)
+            files = self._extract_and_save_files(current_response, base_dir=base_dir)
             if not files:
                 return current_response, re.sub(r'\[FACT\].*', '', current_response).strip()
 
@@ -224,7 +256,7 @@ class NeurosymbolicAgent:
             test_results = []
             
             for f in files:
-                success, output = self._run_test(f)
+                success, output = self._run_test(f, base_dir=base_dir)
                 test_results.append(f"File: {f} | Success: {success}\nOutput:\n{output}")
                 if not success:
                     all_success = False
@@ -273,19 +305,28 @@ class NeurosymbolicAgent:
 
         return current_response, re.sub(r'\[FACT\].*', '', current_response).strip()
 
-    def _run_test(self, filename):
-        """Executes a saved script and returns (success, output)."""
+    def _run_test(self, filename, base_dir=None):
+        """Executes a saved Python script and returns (success, output).
+        Non-Python files (PLAN.md, .json, .db, etc.) are skipped as passing.
+        """
+        # Only test Python files — other files are not executable
+        if not filename.endswith('.py'):
+            return True, f"[Skipped: {filename} is not a Python file]"
+
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        filepath = os.path.join(root_dir, 'scratch', filename)
+        if base_dir:
+            filepath = os.path.join(root_dir, 'scratch', base_dir, filename)
+        else:
+            filepath = os.path.join(root_dir, 'scratch', filename)
         
         try:
-            # Run the generated script
+            exec_cwd = os.path.dirname(filepath)
             run_res = subprocess.run(
                 ["python", filepath], 
                 capture_output=True, 
                 text=True, 
                 timeout=15,
-                cwd=root_dir
+                cwd=exec_cwd
             )
             output = run_res.stdout.strip() or run_res.stderr.strip()
             return (run_res.returncode == 0), output
@@ -294,13 +335,17 @@ class NeurosymbolicAgent:
         except Exception as e:
             return False, f"System Error executing script: {str(e)}"
 
-    def _extract_and_save_files(self, text):
+    def _extract_and_save_files(self, text, base_dir=None):
         """Finds [FILE: name] tags and saves code blocks to scratch/."""
         pattern = r"\[FILE:\s*(.+?)\]\s*[\n\s]*```[a-z]*\n(.+?)(?:\n?```|$)"
         matches = re.finditer(pattern, text, re.DOTALL)
         
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        scratch_dir = os.path.join(root_dir, 'scratch')
+        if base_dir:
+            scratch_dir = os.path.join(root_dir, 'scratch', base_dir)
+        else:
+            scratch_dir = os.path.join(root_dir, 'scratch')
+            
         os.makedirs(scratch_dir, exist_ok=True)
         
         saved_files = []
@@ -308,14 +353,87 @@ class NeurosymbolicAgent:
             filename = match.group(1).strip()
             code = match.group(2)
             filepath = os.path.join(scratch_dir, filename)
+            # Ensure parent directories exist within the project
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            
             try:
                 with open(filepath, "w", encoding="utf-8") as f:
                     f.write(code)
-                print(f"[*] Autonomous Coding: Saved {filename} to scratch/")
+                print(f"[*] Autonomous Coding: Saved {filename} to {os.path.basename(scratch_dir)}/")
                 saved_files.append(filename)
             except Exception as e:
                 print(f"[!] Failed to save autonomous code {filename}: {e}")
         return saved_files
+
+    def _is_project_request(self, text):
+        """Detects if the request is for a complex project."""
+        keywords = ['project', 'application', 'system', 'multiple files', 'app', 'complex software', 'sqlite', 'database']
+        return any(k in text.lower() for k in keywords) and len(text.split()) > 5
+
+    def _project_planning_flow(self, user_input, messages):
+        """Runs the project planning phase."""
+        # 1. Gather technical context
+        print("[*] Project Planning: Researching architecture...")
+        search_query = f"Modern Python architecture for {user_input}"
+        web_help = self.searcher.search(search_query)
+        
+        # 2. Generate Plan
+        print("[*] Project Planning: Generating PLAN.md...")
+        planner_content = f"{prompts.PROJECT_PLANNER_PROMPT}\n\nUSER REQUEST: {user_input}"
+        if web_help:
+            planner_content += f"\n\nTECHNICAL REFERENCE:\n{web_help[:800]}"
+            
+        planner_messages = [
+            {"role": "system", "content": prompts.SYSTEM_PROMPT},
+            {"role": "user", "content": planner_content}
+        ]
+        
+        response = self.client.chat.completions.create(
+            model=config.MODEL_NAME,
+            messages=planner_messages,
+            temperature=config.TEMPERATURE,
+            max_tokens=config.MAX_TOKENS_GENERATION
+        )
+        
+        plan_raw = response.choices[0].message.content
+        
+        # 3. Create Project Directory
+        import time
+        project_name = re.sub(r'[^a-z0-9]', '_', user_input.lower())[:20]
+        project_dir_name = f"project_{project_name}_{int(time.time())}"
+        
+        # 4. Save PLAN.md — two-stage approach:
+        #    a) Try extracting a tagged [FILE: PLAN.md] block from the response
+        #    b) Guarantee write: if nothing was extracted, write the raw plan directly
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        plan_dir = os.path.join(root_dir, 'scratch', project_dir_name)
+        os.makedirs(plan_dir, exist_ok=True)
+
+        extracted = self._extract_and_save_files(plan_raw, base_dir=project_dir_name)
+        plan_md_path = os.path.join(plan_dir, 'PLAN.md')
+        if 'PLAN.md' not in extracted:
+            # Fallback: write the raw model response as PLAN.md
+            with open(plan_md_path, 'w', encoding='utf-8') as f:
+                f.write(plan_raw)
+            print(f"[*] Project Planning: Plan saved to scratch/{project_dir_name}/PLAN.md (fallback write)")
+        else:
+            print(f"[*] Project Planning: Plan saved to scratch/{project_dir_name}/PLAN.md")
+
+        # We return the project_dir and the plan as the 'initial response' for the coding loop
+        # We also instruct the model to start building
+        building_instruction = f"The plan is approved. Now implement the project files into the {project_dir_name} directory as defined in the plan."
+        messages.append({"role": "assistant", "content": plan_raw})
+        messages.append({"role": "user", "content": building_instruction})
+        
+        # Generate the first set of files
+        response = self.client.chat.completions.create(
+            model=config.MODEL_NAME,
+            messages=messages,
+            temperature=config.TEMPERATURE,
+            max_tokens=config.MAX_TOKENS_GENERATION
+        )
+        
+        return project_dir_name, response.choices[0].message.content
 
     def reset(self):
         """Clears the conversational history."""

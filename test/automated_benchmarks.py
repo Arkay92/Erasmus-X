@@ -29,16 +29,14 @@ TEST_QUESTIONS = [
     "Write a script that calculates the Fibonacci sequence up to its 10th term using a generator. [FILE: fib.py]",
     "Create a script that filters a list of fruits for only those with more than 5 letters. [FILE: filter.py]",
     "Implement a basic Bubble Sort algorithm in Python for a list of numbers. [FILE: sort.py]",
-    "Write a Python script to convert 100 degrees Fahrenheit to Celsius. [FILE: convert.py]"
+    "Write a Python script to convert 100 degrees Fahrenheit to Celsius. [FILE: convert.py]",
+    "Design and implement a complete Project: 'Planet Explorer'. This should be a multi-file application with a main entry point, a data module for JSON persistence to store planetary data, and a generator module for procedural planet names. Create a PLAN.md first."
 ]
 
 def run_benchmark():
     print(f"--- Starting ULTIMATE Neurosymbolic Stress Test ---")
     
     start_time = time.time()
-    
-    start_time = time.time()
-    
     full_chain = []
     
     def wait_for_prompt(target_process):
@@ -85,17 +83,23 @@ def run_benchmark():
         # Extract response
         is_cached = "[Semantic Cache Hit]" in step_output
         
-        # New: Execution Verification
-        file_match = re.search(r"Saved (.+?) to scratch/", step_output)
+        # New: Execution Verification (Updated for Projects)
+        file_match = re.search(r"Saved (.+?) to (.+?)/", step_output)
         execution_status = "N/A"
         if file_match:
             filename = file_match.group(1).strip()
+            dir_name = file_match.group(2).strip()
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            filepath = os.path.join(root_dir, 'scratch', filename)
-            print(f"\n[*] Execution Verification: Running {filename}...")
+            
+            if dir_name == "scratch":
+                filepath = os.path.join(root_dir, 'scratch', filename)
+            else:
+                filepath = os.path.join(root_dir, 'scratch', dir_name, filename)
+                
+            print(f"\n[*] Execution Verification: Running {filename} in {dir_name}...")
             try:
                 # Run the generated script
-                run_res = subprocess.run(["python", filepath], capture_output=True, text=True, timeout=10)
+                run_res = subprocess.run(["python", filepath], capture_output=True, text=True, timeout=20)
                 if run_res.returncode == 0:
                     execution_status = "SUCCESS"
                 else:
@@ -113,24 +117,41 @@ def run_benchmark():
             "search_triggered": "[Headless Search]" in step_output,
             "facts_extracted": len(re.findall(r"\[FACT\].*", step_output)),
             "code_execution": execution_status,
+            "project_mode": "Project Mode Detected" in step_output,
+            "brain_synced": "BrainSync" in step_output,
             "output_len": len(step_output)
         }
         full_chain.append(entry)
-        print(f"\n[+] Step complete in {entry['duration']}s | Search: {entry['search_triggered']} | Facts: {entry['facts_extracted']}")
+
+        # Additional check: if project mode ran, verify directory was created
+        if entry["project_mode"]:
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            scratch_dirs = [d for d in os.listdir(os.path.join(root_dir, 'scratch'))
+                            if d.startswith('project_')]
+            proj_created = len(scratch_dirs) > 0
+            entry["project_dir_created"] = proj_created
+            print(f"[*] Project Dir Check: {'✅ Created' if proj_created else '❌ Missing'} ({scratch_dirs[-1] if scratch_dirs else 'none'})")
+        else:
+            entry["project_dir_created"] = None
+
+        print(f"\n[+] Step {i+1} complete in {entry['duration']}s | "
+              f"Cache: {entry['is_cached']} | Search: {entry['search_triggered']} | "
+              f"Facts: {entry['facts_extracted']} | Code: {entry['code_execution']} | "
+              f"Project: {entry['project_mode']} | BrainSync: {entry['brain_synced']}")
         
-        # Exit the fresh process
-        process.stdin.write("exit\n")
-        process.stdin.flush()
+        # Cleanly exit this step's process
+        try:
+            process.stdin.write("exit\n")
+            process.stdin.flush()
+        except Exception:
+            pass
         process.terminate()
+        process.wait(timeout=5)
         
-        # Small delay
         time.sleep(1)
 
-    # Exit the agent
-    print("\n--- Stress Test Complete. Exiting... ---")
-    process.stdin.write("exit\n")
-    process.stdin.flush()
-    process.terminate()
+    # ── Scorecard ─────────────────────────────────────────────────────────────
+    print("\n--- Stress Test Complete ---")
 
     total_duration = time.time() - start_time
     total_facts = sum(e['facts_extracted'] for e in full_chain)
@@ -138,21 +159,42 @@ def run_benchmark():
     cache_hits = sum(1 for e in full_chain if e['is_cached'])
     code_success = sum(1 for e in full_chain if e['code_execution'] == "SUCCESS")
     code_total = sum(1 for e in full_chain if e['code_execution'] != "N/A")
-    
-    print("\n" + "="*50)
-    print("ULTIMATE BENCHMARK SCORECARD")
-    print(f"Total Time: {round(total_duration, 2)}s")
-    print(f"Total Triplets Extracted: {total_facts}")
-    print(f"Web Researches Performed: {search_ops}")
-    print(f"Semantic Cache Hits: {cache_hits}")
-    print(f"Autonomous Code Success: {code_success}/{code_total}")
-    print("="*50)
+    project_steps = [e for e in full_chain if e['project_mode']]
+    proj_dirs_ok = sum(1 for e in project_steps if e.get('project_dir_created'))
+    brain_syncs = sum(1 for e in full_chain if e['brain_synced'])
 
-    # Save Results (Unified Brain)
+    print("\n" + "="*60)
+    print("  ULTIMATE BENCHMARK SCORECARD")
+    print("="*60)
+    print(f"  Total Time          : {round(total_duration, 2)}s")
+    print(f"  KG Triplets Extracted: {total_facts}")
+    print(f"  Web Searches        : {search_ops}")
+    print(f"  Semantic Cache Hits : {cache_hits}")
+    print(f"  Code Execution Pass : {code_success}/{code_total}")
+    print(f"  Project Dirs Created: {proj_dirs_ok}/{len(project_steps)}")
+    print(f"  Brain Syncs         : {brain_syncs}")
+    print("="*60)
+    print("\n  Per-Step Summary:")
+    print(f"  {'Step':<5} {'Time':>7}  {'Cache':<6} {'Search':<7} {'Facts':<6} {'Code':<10} {'Project':<8} {'Sync':<5}")
+    print("  " + "-"*65)
+    for e in full_chain:
+        print(f"  {e['step']:<5} {e['duration']:>6.1f}s  "
+              f"{'Y' if e['is_cached'] else 'N':<6} "
+              f"{'Y' if e['search_triggered'] else 'N':<7} "
+              f"{e['facts_extracted']:<6} "
+              f"{e['code_execution'][:9]:<10} "
+              f"{'Y' if e['project_mode'] else 'N':<8} "
+              f"{'Y' if e['brain_synced'] else 'N':<5}")
+    print("="*60)
+
+    # ── Brain Sync of benchmark results ──────────────────────────────────────
     print("\n--- Syncing benchmark results to Agent Brain ---")
     try:
         from core.vector_store import HypervectorDB
+        from utils.brain_sync import sync_record
+        from core.knowledge_graph import KnowledgeGraph
         brain = HypervectorDB(filename=BRAIN_FILE)
+        kg = KnowledgeGraph(storage=brain)
         brain.add_convo_step({
             "type": "STRESS_TEST",
             "timestamp": time.time(),
@@ -160,11 +202,33 @@ def run_benchmark():
             "duration": total_duration,
             "steps": full_chain
         })
-        print(f"[+] Sync complete. Benchmark records are now part of the agent's vectorized memory.")
+        # Also sync each step result as a structured record
+        for e in full_chain:
+            sync_record(brain, kg, {
+                "benchmark_step": e['step'],
+                "query_summary": e['query'][:60],
+                "code_execution": e['code_execution'],
+                "project_mode": str(e['project_mode']),
+                "brain_synced": str(e['brain_synced']),
+                "duration_s": str(e['duration'])
+            }, source_label="benchmark")
+        print(f"[+] Sync complete. {len(full_chain)} step records in agent vectorized memory.")
     except Exception as e:
         print(f"[Sync Error] Could not save to brain: {e}")
-    
-    print(f"\nBenchmark records are now part of the agent's vectorized memory within the binary Brain.")
+
+    # ── BrainSync Verification ────────────────────────────────────────────────
+    print("\n--- Post-Benchmark BrainSync Verification ---")
+    try:
+        from core.vector_store import HypervectorDB
+        brain_check = HypervectorDB(filename=BRAIN_FILE)
+        results = brain_check.search("benchmark step code execution", threshold=0.05, top_k=3)
+        if results:
+            print(f"[✅] Benchmark records are semantically searchable in agent memory ({len(results)} hits).")
+        else:
+            print("[⚠️] Benchmark records not found via semantic search — check brain encoding.")
+    except Exception as e:
+        print(f"[BrainSync Check Error] {e}")
+
 
 if __name__ == "__main__":
     run_benchmark()
