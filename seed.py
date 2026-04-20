@@ -1,17 +1,13 @@
-import sys
 import os
+import sys
 import re
 import time
 import argparse
-
-# Ensure project root is in sys.path
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-
+from openai import OpenAI
 from core.vector_store import HypervectorDB
 from core.knowledge_graph import KnowledgeGraph
 from utils.web_search import WebSearcher
-from openai import OpenAI
-from core import config
+from core import config, prompts
 
 class SeedingEngine:
     def __init__(self, questions_file):
@@ -24,89 +20,124 @@ class SeedingEngine:
         self.client = OpenAI(base_url=config.API_BASE_URL, api_key=config.API_KEY)
         self.questions = self._load_questions(questions_file)
 
+    def _safe_llm_call(self, prompt, system_prompt=None, max_tokens=150, temperature=0.1):
+        """
+        Robust wrapper for LLM calls with linear backoff.
+        """
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        for attempt in range(3):
+            try:
+                response = self.client.chat.completions.create(
+                    model=config.MODEL_NAME,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    timeout=60.0 # Standard timeout for 2B
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                wait_time = (attempt + 1) * 5
+                print(f" [!] LLM Issue (Attempt {attempt+1}/3): {e}")
+                time.sleep(wait_time)
+        return None
+
     def _load_questions(self, file_path):
         if not os.path.exists(file_path):
-            print(f"Error: {file_path} not found.")
             return []
-        with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        # Extract questions using regex for lines starting with "1. " or "201. " etc.
-        questions = []
-        for line in lines:
-            match = re.match(r"^\d+\.\s+(.*)", line.strip())
-            if match:
-                questions.append(match.group(1))
-        return questions
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return re.findall(r"\d+\.\s*(.+)", content)
 
     def _extract_triplets_direct(self, text):
         """
         Direct high-speed triplet extraction from raw search data.
-        Bypasses the Agent reasoning loop.
         """
-        if not text: return
+        if not text or len(text) < 20: return False
         
-        prompt = f"Extract exactly 3-5 high-quality knowledge triplets from the text below.\nOutput ONLY in the format: [FACT] subject | relation | object\n\nText: {text[:1000]}"
+        prompt = f"Extract exactly 3-5 knowledge triplets from the text below.\nOutput ONLY in the format: [FACT] subject | relation | object\n\nText: {text[:1000]}"
+        raw = self._safe_llm_call(prompt, temperature=0)
         
-        try:
-            response = self.client.chat.completions.create(
-                model=config.MODEL_NAME,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=200,
-                temperature=0
-            )
-            raw = response.choices[0].message.content
+        if raw and "[FACT]" in raw:
+            facts = len(re.findall(r"\[FACT\]", raw))
             self.kg.extract_from_llm_response(raw)
-        except Exception as e:
-            print(f" [!] Extraction failed: {e}")
+            print(f" [>] Extracted {facts} symbolic relations.")
+            return True
+        return False
+
+    def _process_single_question(self, q):
+        """
+        Handles search, vectorization, and symbolic induction for one question.
+        """
+        print(f" [>] Searching & Inducting: {q}")
+        
+        # 1. Search internet
+        search_results = self.searcher.search(q)
+        if not search_results:
+            print(" [!] No internet context found.")
+            return
+
+        # 2. Vectorize context (Hypervector Induction)
+        # Handle list of dicts (standard) or list of strings
+        combined_text = ""
+        if isinstance(search_results, list):
+            for res in search_results:
+                if isinstance(res, dict):
+                    combined_text += f"{res.get('title', '')} {res.get('body', '')}\n"
+                else:
+                    combined_text += f"{str(res)}\n"
+        else:
+            combined_text = str(search_results)
+
+        if len(combined_text) > 20:
+            self.brain.add_document(f"Topic: {q} | Context: {combined_text[:2000]}")
+            
+            # 3. Direct Symbolic Extraction (Neurosymbolic Induction)
+            self._extract_triplets_direct(combined_text)
 
     def run(self, limit=None):
-        target_questions = self.questions[:limit] if limit else self.questions
-        total = len(target_questions)
+        """
+        Executes the seeding loop with high-throughput batching.
+        """
+        target_qs = self.questions[:limit] if limit else self.questions
+        total = len(target_qs)
+        start_time = time.time()
         
-        print(f"--- Starting Neurosymbolic Seeding Engine ---")
-        print(f"[*] Targeting {total} questions from curriculum.")
+        print(f"\n--- Starting High-Throughput Seeding Engine (Model: 2B) ---")
+        print(f"[*] Induction Goal: {total} topics")
+        print(f"[*] Persistence: Sync to disk every 10 topics")
         
-        for i, q in enumerate(target_questions):
-            print(f"\n[{i+1}/{total}] Processing: {q}")
+        for i, main_q in enumerate(target_qs, 1):
+            # Calculate and display throughput
+            elapsed = time.time() - start_time
+            velocity = i / (elapsed / 60) if elapsed > 0 else 0
             
-            # Step 1: Direct Web Search (Bypass LLM 'Skeptic' logic)
-            print(" [>] Searching DuckDuckGo...")
-            web_results = self.searcher.search(q)
+            print(f"\r[{i}/{total}] Inducting... (Velocity: {velocity:.1f} topics/min)", end="", flush=True)
+            self._process_single_question(main_q)
             
-            if web_results:
-                # Step 2: Hypervectorization (Meta-summary)
-                print(" [>] Vectorizing Internet Result...")
-                self.brain.add_document(f"Question: {q} | Source: internet | Data: {web_results[:500]}")
-                
-                # Step 3: Symbolic Extraction (Direct to KG)
-                print(" [>] Extracting Symbolic Relations...")
-                self._extract_triplets_direct(web_results)
-            else:
-                print(" [!] No web results found. Skipping.")
-                
-            # Periodic Checkpoint
-            if (i+1) % 5 == 0:
-                print(f"\n[Checkpoint] Saving Agent Brain to disk...")
+            # Batch Persistence (Save every 10 items)
+            if i % 10 == 0:
                 self.brain.save()
-            
-            # Rate limit respect (DuckDuckGo can be sensitive)
-            time.sleep(2)
-            
-        # Final Save
+        
+        # Final sync
         self.brain.save()
-        print("\n--- Seeding Operation Complete ---")
-        print(f"[+] Agent Brain has been updated with results from {total} questions.")
+        total_time = (time.time() - start_time) / 60
+        print(f"\n\n--- Seeding Operation Complete ---")
+        print(f"[+] Total Time: {total_time:.1f} minutes")
+        print(f"[+] Average Speed: {total / total_time:.1f} topics/min")
+        print(f"[+] Agent Brain synchronized to disk.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Neurosymbolic Seeding Engine")
     parser.add_argument("--limit", type=int, default=None, help="Limit the number of questions to process")
     args = parser.parse_args()
     
-    # Path to curriculum
     curriculum_path = "questions/world_curriculum.md"
-    
     engine = SeedingEngine(curriculum_path)
+    
     if not engine.questions:
         print("No questions found in curriculum. Check the file path.")
         sys.exit(1)

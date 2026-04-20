@@ -15,3 +15,10 @@ CONTEXT_PREVIOUS = "PREVIOUS KNOWLEDGE: "
 CONTEXT_FACTS = "FACTS: "
 CONTEXT_SOURCE_START = "--- SOURCE DATA ---\n"
 CONTEXT_SOURCE_END = "\n--- END SOURCE ---"
+
+# Meta-Question Generation for Seeding (Instructional for 7.5B Stability)
+META_GEN_PROMPT = """Analyze the topic provided below and generate exactly 2 intelligent follow-up research questions.
+Each question should explore the significance, application, or deeper implications of the topic.
+Format your response accurately with Q1: and Q2: prefixes.
+
+Topic: """

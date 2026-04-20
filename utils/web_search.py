@@ -4,20 +4,20 @@ class WebSearcher:
     def __init__(self):
         self.ddgs = DDGS()
 
-    def search(self, query, max_results=3):
-        print(f"\n[Headless Search] Exploring internet for context on: '{query}'...")
+    def search(self, query, max_results=2):
+        """High-speed snippet retrieval."""
         try:
+            # max_results reduced for speed; quality is maintained via top snippets
             results = list(self.ddgs.text(query, max_results=max_results))
             snippets = []
             for r in results:
-                snippets.append(f"Source: {r.get('title')}\nContent: {r.get('body', '')[:400]}...")
+                body = r.get('body', '')
+                if len(body) > 10:
+                    snippets.append(f"Source: {r.get('title')}\nContent: {body[:300]}")
             
             if snippets:
-                print(f"[Headless Search] Found {len(snippets)} relevant documents!")
                 return "\n\n".join(snippets)
-            else:
-                print("[Headless Search] No results returned by API.")
-                return None
+            return None
         except Exception as e:
-            print(f"[Search Failed]: {e}")
+            # Silently fail to keep the batch induction moving
             return None

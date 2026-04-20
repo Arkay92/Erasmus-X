@@ -15,13 +15,13 @@ MAIN_SCRIPT = "main.py"
 RESULTS_FILE = "memories/convo_chain.json"
 BRAIN_FILE = config.BRAIN_STORAGE_PATH
 
-# 5 Levels of Ultimate Neurosymbolic Stress
+# 5 Levels of Cross-Modal Synthesis Stress
 TEST_QUESTIONS = [
-    "Analyze the most recent financial results of NVIDIA (NVDA) and their primary stock catalyst.",
-    "How does this compare to their previous quarterly guidance mentioned in our records?",
-    "Extract a triplet graph of NVIDIA's partnerships and products mentioned in these reports.",
-    "Given the partnerships we just mapped, which company is most vulnerable to an AI chip shortage?",
-    "Summarize everything we've learned about the 'AI GPU Market' today and link it to our previous discussion on France's tech sector."
+    "How does the structure of the Higgs boson relate to the 'Hard Problem of Consciousness' as defined by David Chalmers?",
+    "Compare the fall of the Western Roman Empire to the modern 'Alignment Problem' in AI safety.",
+    "If Kant applied his Categorical Imperative to the Silk Road trade, how would it have changed 13th-century economics?",
+    "Describe a logical relationship between Gödel's Incompleteness Theorems and the architecture of a SpaceX Starship.",
+    "Summarize how the Great Depression's impact on political stability compares to the ethics of autonomous weapon systems today."
 ]
 
 def run_benchmark():

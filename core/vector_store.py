@@ -59,7 +59,7 @@ class HypervectorDB:
                 self.memory_tensor = hv.unsqueeze(0)
             else:
                 self.memory_tensor = torch.cat([self.memory_tensor, hv.unsqueeze(0)])
-            self.save()
+            # Optimization: Auto-save removed; calling code must sync when ready.
 
     def add_convo_step(self, entry):
         """Logs a conversation/benchmark step and vectorizes it."""
@@ -67,7 +67,6 @@ class HypervectorDB:
         # Vectorize the query and response for "meta-memory" retrieval
         log_text = f"Query: {entry.get('query')} | Response: {entry.get('raw_output')[:200]}"
         self.add_document(log_text)
-        self.save()
 
     def add_to_cache(self, query, raw_response, clean_ans):
         """Adds a response to the semantic cache."""
@@ -82,7 +81,6 @@ class HypervectorDB:
                 self.cache_tensor = hv.unsqueeze(0)
             else:
                 self.cache_tensor = torch.cat([self.cache_tensor, hv.unsqueeze(0)])
-            self.save()
 
     def search_cache(self, query, threshold=0.98):
         """Checks the cache for a highly similar query."""
