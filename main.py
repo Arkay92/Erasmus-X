@@ -22,11 +22,14 @@ def main():
     print("Neurosymbolic System Active! Ready for chat.")
     print("-" * 50)
 
+    turn_counter = 0
+
     while True:
         try:
             user_input = input("\nYou: ")
             
             if user_input.lower() in ['exit', 'quit']:
+                print("[*] Persisting Brain before exit...")
                 brain.save()
                 break
                 
@@ -39,9 +42,12 @@ def main():
             if clean_ans:
                 print("Gemma: " + raw_response)
                 
-                # Side Effects (Visualization & Persistence)
-                generate_visual_graph(graph_data=brain.graph_data)
-                brain.save()
+                # Throttled Persistence & Visualization (Optimization)
+                turn_counter += 1
+                if turn_counter % 3 == 0:
+                    print("[*] Performing background persistence...")
+                    generate_visual_graph(graph_data=brain.graph_data)
+                    brain.save()
             else:
                 # Handle errors (raw_response contains the error message)
                 print(f"Gemma: {raw_response}")

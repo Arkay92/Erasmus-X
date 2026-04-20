@@ -99,35 +99,41 @@ class HypervectorDB:
         return None
 
     def _init_intents(self):
-        """Pre-seeds the Brain with class centroids for SEARCH vs RECALL."""
+        """Pre-seeds the Brain with class centroids for SEARCH vs RECALL vs TOOL."""
         print("[*] Training high-speed intent routing...")
         # 1. Search Intent (Dynamic/Discovery/News)
-        search_seeds = ["latest news", "current status", "update on", "what is happening", "latest results", "current price", "news about"]
+        search_seeds = ["latest news", "current status", "update on", "what is happening", "latest results", "current price", "news about", "who is CURRENTLY"]
         search_v = torch.stack([self.encode(s) for s in search_seeds])
         search_centroid = torchhd.functional.multiset(search_v)
         
         # 2. Recall Intent (Static/Facts/Identity)
-        recall_seeds = ["who is", "what is", "about the", "tell me about", "history of", "capital of", "define"]
+        recall_seeds = ["who is", "what is", "about the", "tell me about", "history of", "capital of", "define", "what do we know about"]
         recall_v = torch.stack([self.encode(r) for r in recall_seeds])
         recall_centroid = torchhd.functional.multiset(recall_v)
+
+        # 3. Tool/Utility Intent (Deterministic Scripts)
+        tool_seeds = ["find files", "list directory", "scan project", "search pattern", "grep", "dependency audit", "check versions", "list all files", "where is"]
+        tool_v = torch.stack([self.encode(t) for t in tool_seeds])
+        tool_centroid = torchhd.functional.multiset(tool_v)
         
-        self.intent_centers = torch.stack([search_centroid, recall_centroid])
+        self.intent_centers = torch.stack([search_centroid, recall_centroid, tool_centroid])
         self.save()
 
     def classify_intent(self, query):
         """
         High-speed HDC intent classification.
-        Returns 'SEARCH' or 'RECALL' and the confidence score.
+        Returns 'SEARCH', 'RECALL', or 'TOOL' and the confidence score.
         """
         if self.intent_centers is None:
             self._init_intents()
             
         q_v = self.encode(query)
-        # Cosine similarity against the two class centroids
+        # Cosine similarity against the class centroids
         sims = torchhd.functional.cosine_similarity(q_v, self.intent_centers)
         
         score, idx = torch.max(sims, dim=0)
-        label = "SEARCH" if idx.item() == 0 else "RECALL"
+        labels = ["SEARCH", "RECALL", "TOOL"]
+        label = labels[idx.item()]
         return label, score.item()
 
     def search(self, query, threshold=0.10, top_k=3):
@@ -138,10 +144,28 @@ class HypervectorDB:
         # Calculate cosine similarity against all stored hypervectors
         similarities = torchhd.functional.cosine_similarity(query_hv, self.memory_tensor)
         
-        results = []
-        # Sort indices by highest score
-        scores, indices = torch.sort(similarities, descending=True)
+        # Optimization: Use topk for efficient O(N log K) retrieval instead of O(N log N) sorting
+        k = min(top_k * 2, len(self.documents)) # Retrieve a bit more to filter by threshold
+        scores, indices = torch.topk(similarities, k=k)
         
+        results = []
+        for i in range(len(indices)):
+            score = scores[i].item()
+            idx = indices[i].item()
+            if score >= threshold:
+                results.append((score, self.documents[idx]))
+                if len(results) >= top_k:
+                    break
+    def search_by_hv(self, query_hv, threshold=0.10, top_k=3):
+        """Internal search using a pre-computed hypervector."""
+        if not self.documents or self.memory_tensor is None:
+            return []
+            
+        similarities = torchhd.functional.cosine_similarity(query_hv, self.memory_tensor)
+        k = min(top_k * 2, len(self.documents))
+        scores, indices = torch.topk(similarities, k=k)
+        
+        results = []
         for i in range(len(indices)):
             score = scores[i].item()
             idx = indices[i].item()

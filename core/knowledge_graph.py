@@ -1,4 +1,5 @@
 import networkx as nx
+import re
 
 class KnowledgeGraph:
     def __init__(self, storage=None):
@@ -28,7 +29,7 @@ class KnowledgeGraph:
         # Fuzzy/Substring match for nodes
         target_nodes = []
         for node in self.graph.nodes:
-            if entity in node.lower():
+            if entity in node.lower() or node.lower() in entity:
                 target_nodes.append(node)
         
         for matched_node in target_nodes:
@@ -40,7 +41,25 @@ class KnowledgeGraph:
             for source in self.graph.predecessors(matched_node):
                 rel = self.graph.edges[source, matched_node].get('relation', 'is')
                 facts.append(f"{source} {rel} {matched_node}")
-        return facts
+        return list(set(facts)) # Dedup
+
+    def get_related_facts_semantic(self, query_hv, brain, threshold=0.15):
+        """
+        Neurosymbolic Bridge: Finds the most similar CONCEPT in the KG 
+        using hypervectors, then returns its symbolic relations.
+        """
+        if not self.graph.nodes:
+            return []
+            
+        # 1. Collect semantic hit from the vector brain
+        results = brain.search_by_hv(query_hv, threshold=threshold, top_k=1)
+        
+        if not results:
+            return []
+            
+        # 2. For the top semantic hit, return its symbolic relations
+        nearest_node = results[0][1].lower()
+        return self.get_related_facts(nearest_node)
 
     def extract_from_llm_response(self, text):
         lines = text.split('\n')

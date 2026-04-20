@@ -22,6 +22,15 @@ class NeurosymbolicAgent:
         self.compressor = PromptCompressor(enabled=config.ENABLE_PROMPT_COMPRESSION)
         self.messages = []
         self.last_subject = None
+        self._persona_cache = {}
+        self._pre_cache_shards()
+
+    def _pre_cache_shards(self):
+        """Warm up the persona cache for high-speed routing."""
+        shards = self._load_shards_from_disk()
+        for s in shards:
+            self._persona_cache[s['name']] = s
+        print(f"[*] Agent initialized with {len(self._persona_cache)} persona shards cached.")
 
     def _resolve_context(self, text):
         """Agnostic entity resolution and staleness check."""
@@ -70,6 +79,14 @@ class NeurosymbolicAgent:
         # --- PHASE 1: ULTRA-FAST INTENT ROUTING (HDC) ---
         intent, confidence = self.brain.classify_intent(user_input)
         
+        # --- PHASE 1.5: SHORT-CIRCUIT TOOLING ---
+        # If the intent is TOOL and confidence is high, or if it's an explicit command
+        is_command = user_input.startswith('/')
+        if (intent == "TOOL" and confidence > 0.40) or is_command:
+            tool_res = self._try_tool_short_circuit(user_input)
+            if tool_res:
+                return tool_res + "\n[Short-Circuit Tool Success]", tool_res
+
         # Approximative context resolution (lossy but fast)
         # Search for follow-up pronouns
         pronouns = ['it', 'they', 'them', 'him', 'her', 'this', 'that']
@@ -117,6 +134,11 @@ class NeurosymbolicAgent:
         
         for term in search_terms:
             graph_facts.extend(self.kg.get_related_facts(term))
+        
+        # Neurosymbolic Bridge: Semantic Search for Concept-Based Facts
+        # If we have a query HV, find nearest concepts in the KG
+        query_hv = self.brain.encode(user_input)
+        graph_facts.extend(self.kg.get_related_facts_semantic(query_hv, self.brain, threshold=0.15))
         
         # Build context blocks
         context_blocks = []
@@ -385,6 +407,12 @@ class NeurosymbolicAgent:
         return any(k in text.lower() for k in keywords) and len(text.split()) > 5
 
     def _load_available_shards(self):
+        """Optimized shard retrieval using local cache."""
+        if self._persona_cache:
+            return list(self._persona_cache.values())
+        return self._load_shards_from_disk()
+
+    def _load_shards_from_disk(self):
         """Scans shards/agents and shards/skills for available personas."""
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         shards_dir = os.path.join(root_dir, 'shards')
@@ -619,3 +647,33 @@ Current Task context: {current_task}
         except Exception as e:
             print(f"[!] Spin down failed: {e}")
             return False
+
+    def _try_tool_short_circuit(self, query):
+        """Attempts to execute a local tool to save tokens and time."""
+        query_low = query.lower()
+        cmd = None
+        args = []
+
+        # Map query to tools
+        if any(x in query_low for x in ["/scan", "scan project", "list directory", "list all files"]):
+            cmd = "tools/project_scanner.py"
+        elif any(x in query_low for x in ["/grep", "search pattern", "find in files", "grep"]):
+            cmd = "tools/pattern_grep.py"
+            # Extract pattern if possible
+            parts = query.split()
+            if len(parts) > 1:
+                args = [parts[-1].strip("'\"")]
+        elif any(x in query_low for x in ["/audit", "dependency audit", "check versions"]):
+            cmd = "tools/dependency_audit.py"
+
+        if not cmd:
+            return None
+
+        print(f"[*] Tool Short-Circuit: Running {cmd}...")
+        try:
+            # Use sys.executable to ensure we use the same environment
+            full_cmd = [sys.executable, cmd] + args
+            result = subprocess.run(full_cmd, capture_output=True, text=True)
+            return result.stdout if result.returncode == 0 else f"Tool Error: {result.stderr}"
+        except Exception as e:
+            return f"System Error executing tool: {str(e)}"
