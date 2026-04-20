@@ -18,7 +18,7 @@ TOP_K_RESULTS = 3
 
 # Agent Configuration
 MAX_HISTORY_LEN = 2
-MAX_TOKENS_GENERATION = 400
+MAX_TOKENS_GENERATION = 1024
 TEMPERATURE = 0.1
 
 # Semantic Cache Configuration

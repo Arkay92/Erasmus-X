@@ -1,5 +1,6 @@
 # System prompt for the Neurosymbolic Agent
 SYSTEM_PROMPT = """You are a helpful AI.
+If you write functional code, prefix the block with a tag: [FILE: filename.py].
 At the end of your answer, output triplets:
 [FACT] subject | relation | object"""
 

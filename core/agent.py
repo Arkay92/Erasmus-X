@@ -141,23 +141,34 @@ class NeurosymbolicAgent:
                     print(f"[*] Compressed block: saved {savings} chars ({pct:.1f}%)")
         
         # --- PHASE 4: GENERATION ---
-        current_prompt = prompts.SYSTEM_PROMPT + "\n\n"
+        # 1. Build User Content with limited context
+        user_content = ""
         if final_context_blocks:
-            current_prompt += "\n".join(final_context_blocks) + "\n\n"
-        current_prompt += f"USER QUESTION: {user_input}"
+            context_text = "\n".join(final_context_blocks)
+            # Extreme context budget for 2048-token stability
+            if len(context_text) > 400:
+                context_text = context_text[:400] + "... [Context Pruned]"
+            user_content += context_text + "\n\n"
+        user_content += f"USER QUESTION: {user_input}"
 
-        # Keep history tight
-        if len(self.messages) > config.MAX_HISTORY_LEN:
-            self.messages = self.messages[-config.MAX_HISTORY_LEN:]
-
-        self.messages.append({"role": "user", "content": current_prompt})
+        # 2. Reconstruct messages list with System Role first
+        # Format: [System, {History}, CurrentUser]
+        messages = [{"role": "system", "content": prompts.SYSTEM_PROMPT}]
         
-        print("Gemma is thinking...", end="\r", flush=True)
+        # Keep history extremely tight (1 turn for benchmark sanity)
+        history = []
+        if len(self.messages) > 1:
+            history = self.messages[-2:] # Keep last turn (User + Assistant)
+        
+        messages.extend(history)
+        messages.append({"role": "user", "content": user_content})
+        
+        print("Gemma is thinking...", flush=True)
         
         try:
             response = self.client.chat.completions.create(
                 model=config.MODEL_NAME,
-                messages=self.messages,
+                messages=messages,
                 stream=False,
                 temperature=config.TEMPERATURE,
                 max_tokens=config.MAX_TOKENS_GENERATION
@@ -170,9 +181,13 @@ class NeurosymbolicAgent:
             self.kg.extract_from_llm_response(raw_response)
             
             # 2. Cleanup response for chat history
+            # Standard conversational history ONLY (User/Assistant)
             clean_ans = re.sub(r'\[FACT\].*', '', raw_response).strip()
-            self.messages[-1] = {"role": "user", "content": user_input}
+            self.messages.append({"role": "user", "content": user_input})
             self.messages.append({"role": "assistant", "content": clean_ans})
+            
+            if len(self.messages) > 10: # Long-term safety cap
+                self.messages = self.messages[-10:]
             
             # 3. Vectorize conclusion for long-term memory
             self.brain.add_document(f"Context: {user_input}. Summary: {clean_ans}")
@@ -182,7 +197,37 @@ class NeurosymbolicAgent:
             # 4. Add to Semantic Prompt Cache
             self.brain.add_to_cache(user_input, raw_response, clean_ans)
             
+            # 5. Extract and Save Files to Scratch
+            self._extract_and_save_files(raw_response)
+            
             return raw_response, clean_ans
 
         except Exception as e:
             return f"[Error during generation: {e}]", None
+
+    def _extract_and_save_files(self, text):
+        """Finds [FILE: name] tags and saves code blocks to scratch/."""
+        import os
+        pattern = r"\[FILE:\s*(.+?)\]\s*[\n\s]*```[a-z]*\n(.+?)(?:\n?```|$)"
+        matches = re.finditer(pattern, text, re.DOTALL)
+        
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        scratch_dir = os.path.join(root_dir, 'scratch')
+        os.makedirs(scratch_dir, exist_ok=True)
+        
+        for match in matches:
+            filename = match.group(1).strip()
+            code = match.group(2)
+            filepath = os.path.join(scratch_dir, filename)
+            try:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(code)
+                print(f"\n[*] Autonomous Coding: Saved {filename} to scratch/")
+            except Exception as e:
+                print(f"\n[!] Failed to save autonomous code: {e}")
+
+    def reset(self):
+        """Clears the conversational history."""
+        self.messages = []
+        self.last_subject = None
+        print("[*] Agent Brain history purged for fresh context.")

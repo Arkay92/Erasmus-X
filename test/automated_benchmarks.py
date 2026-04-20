@@ -15,13 +15,21 @@ MAIN_SCRIPT = "main.py"
 RESULTS_FILE = "memories/convo_chain.json"
 BRAIN_FILE = config.BRAIN_STORAGE_PATH
 
-# 5 Levels of Cross-Modal Synthesis Stress
+# 10 Steps of Cross-Modal & Functional Coding Synthesis
 TEST_QUESTIONS = [
+    # Reasoning Stress
     "How does the structure of the Higgs boson relate to the 'Hard Problem of Consciousness' as defined by David Chalmers?",
     "Compare the fall of the Western Roman Empire to the modern 'Alignment Problem' in AI safety.",
     "If Kant applied his Categorical Imperative to the Silk Road trade, how would it have changed 13th-century economics?",
     "Describe a logical relationship between Gödel's Incompleteness Theorems and the architecture of a SpaceX Starship.",
-    "Summarize how the Great Depression's impact on political stability compares to the ethics of autonomous weapon systems today."
+    "Summarize how the Great Depression's impact on political stability compares to the ethics of autonomous weapon systems today.",
+    
+    # Coding Stress (Simplified for 2B Hardware Stability)
+    "Write a Python function to calculate the GCD of two numbers using the Euclidean algorithm. [FILE: gcd.py]",
+    "Write a script that calculates the Fibonacci sequence up to its 10th term using a generator. [FILE: fib.py]",
+    "Create a script that filters a list of fruits for only those with more than 5 letters. [FILE: filter.py]",
+    "Implement a basic Bubble Sort algorithm in Python for a list of numbers. [FILE: sort.py]",
+    "Write a Python script to convert 100 degrees Fahrenheit to Celsius. [FILE: convert.py]"
 ]
 
 def run_benchmark():
@@ -29,25 +37,15 @@ def run_benchmark():
     
     start_time = time.time()
     
-    # Start the agent as a subprocess from the root
-    process = subprocess.Popen(
-        ["python", "-u", MAIN_SCRIPT],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-        cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    )
-
+    start_time = time.time()
+    
     full_chain = []
     
-    def wait_for_prompt():
+    def wait_for_prompt(target_process):
         """Reads output until the 'You:' prompt is found."""
         buffer = ""
         while True:
-            char = process.stdout.read(1)
+            char = target_process.stdout.read(1)
             if not char:
                 break
             buffer += char
@@ -56,11 +54,23 @@ def run_benchmark():
             if buffer.endswith("You: "):
                 break
         return buffer
-
-    # Initial connection wait
-    wait_for_prompt()
     
     for i, question in enumerate(TEST_QUESTIONS):
+        # Start a fresh agent process for each step to ensure full context window
+        process = subprocess.Popen(
+            ["python", "-u", MAIN_SCRIPT],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+            cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        )
+        
+        # Initial connection wait
+        wait_for_prompt(process)
+
         step_start = time.time()
         print(f"\n[STRESS STEP {i+1}] Sending: {question}")
         
@@ -69,11 +79,32 @@ def run_benchmark():
         process.stdin.flush()
         
         # Wait for Gemma's response
-        step_output = wait_for_prompt()
+        step_output = wait_for_prompt(process)
         step_duration = time.time() - step_start
         
         # Extract response
         is_cached = "[Semantic Cache Hit]" in step_output
+        
+        # New: Execution Verification
+        file_match = re.search(r"Saved (.+?) to scratch/", step_output)
+        execution_status = "N/A"
+        if file_match:
+            filename = file_match.group(1).strip()
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            filepath = os.path.join(root_dir, 'scratch', filename)
+            print(f"\n[*] Execution Verification: Running {filename}...")
+            try:
+                # Run the generated script
+                run_res = subprocess.run(["python", filepath], capture_output=True, text=True, timeout=10)
+                if run_res.returncode == 0:
+                    execution_status = "SUCCESS"
+                else:
+                    msg = run_res.stderr.strip() or run_res.stdout.strip()
+                    execution_status = f"FAILED ({msg[:40]}...)"
+            except Exception as e:
+                execution_status = f"ERROR ({str(e)})"
+            print(f"[*] Execution Result: {execution_status}")
+
         entry = {
             "step": i + 1,
             "query": question,
@@ -81,10 +112,16 @@ def run_benchmark():
             "is_cached": is_cached,
             "search_triggered": "[Headless Search]" in step_output,
             "facts_extracted": len(re.findall(r"\[FACT\].*", step_output)),
+            "code_execution": execution_status,
             "output_len": len(step_output)
         }
         full_chain.append(entry)
         print(f"\n[+] Step complete in {entry['duration']}s | Search: {entry['search_triggered']} | Facts: {entry['facts_extracted']}")
+        
+        # Exit the fresh process
+        process.stdin.write("exit\n")
+        process.stdin.flush()
+        process.terminate()
         
         # Small delay
         time.sleep(1)
@@ -95,11 +132,12 @@ def run_benchmark():
     process.stdin.flush()
     process.terminate()
 
-    # Calculate Benchmark Score
     total_duration = time.time() - start_time
     total_facts = sum(e['facts_extracted'] for e in full_chain)
     search_ops = sum(1 for e in full_chain if e['search_triggered'])
     cache_hits = sum(1 for e in full_chain if e['is_cached'])
+    code_success = sum(1 for e in full_chain if e['code_execution'] == "SUCCESS")
+    code_total = sum(1 for e in full_chain if e['code_execution'] != "N/A")
     
     print("\n" + "="*50)
     print("ULTIMATE BENCHMARK SCORECARD")
@@ -107,6 +145,7 @@ def run_benchmark():
     print(f"Total Triplets Extracted: {total_facts}")
     print(f"Web Researches Performed: {search_ops}")
     print(f"Semantic Cache Hits: {cache_hits}")
+    print(f"Autonomous Code Success: {code_success}/{code_total}")
     print("="*50)
 
     # Save Results (Unified Brain)
