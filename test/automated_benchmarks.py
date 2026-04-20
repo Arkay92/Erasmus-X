@@ -1,8 +1,8 @@
 import subprocess
 import time
-import json
 import os
 import re
+import py_compile
 import sys
 
 # Ensure project root is in sys.path for direct imports
@@ -12,7 +12,6 @@ from core import config
 
 # Test Suite Configuration
 MAIN_SCRIPT = "main.py"
-RESULTS_FILE = "memories/convo_chain.json"
 BRAIN_FILE = config.BRAIN_STORAGE_PATH
 
 # 10 Steps of Cross-Modal & Functional Coding Synthesis
@@ -30,7 +29,17 @@ TEST_QUESTIONS = [
     "Create a script that filters a list of fruits for only those with more than 5 letters. [FILE: filter.py]",
     "Implement a basic Bubble Sort algorithm in Python for a list of numbers. [FILE: sort.py]",
     "Write a Python script to convert 100 degrees Fahrenheit to Celsius. [FILE: convert.py]",
-    "Design and implement a complete Project: 'Planet Explorer'. This should be a multi-file application with a main entry point, a data module for JSON persistence to store planetary data, and a generator module for procedural planet names. Create a PLAN.md first."
+    
+    # Project Stress
+    "Design and implement a complete Project: 'Planet Explorer'. This should be a multi-file application with a main entry point, a data module for JSON persistence to store planetary data, and a generator module for procedural planet names. Create a PLAN.md first.",
+
+    # Context Management Stress (Multi-turn session)
+    [
+        "Let's discuss the history of cryptography. Start with the Caesar cipher.",
+        "Now explain the Vigenère cipher in detail. Give a long description.",
+        "Add a 3000 character essay about the impact of Enigma on WWII to the context.",
+        "Can you summarize our entire conversation so far? (This should trigger Spin-Down and then Spin-Up)"
+    ]
 ]
 
 def run_benchmark():
@@ -70,23 +79,39 @@ def run_benchmark():
         wait_for_prompt(process)
 
         step_start = time.time()
-        print(f"\n[STRESS STEP {i+1}] Sending: {question}")
+
+        # Handle Multi-turn vs Single-turn
+        sub_questions = question if isinstance(question, list) else [question]
+        step_outputs = []
+        is_spin_down = False
+        is_spin_up = False
         
-        # Send query
-        process.stdin.write(question + "\n")
-        process.stdin.flush()
-        
-        # Wait for Gemma's response
-        step_output = wait_for_prompt(process)
+        for sub_q in sub_questions:
+            print(f"\n[STRESS STEP {i+1}] Sending: {sub_q[:80]}...")
+            process.stdin.write(sub_q + "\n")
+            process.stdin.flush()
+            
+            output = wait_for_prompt(process)
+            step_outputs.append(output)
+            if "Spinning down..." in output: is_spin_down = True
+            if "--- PREVIOUS SESSION SUMMARY ---" in output: is_spin_up = True
+
+        step_output = "\n".join(step_outputs)
         step_duration = time.time() - step_start
         
         # Extract response
         is_cached = "[Semantic Cache Hit]" in step_output
         
-        # New: Execution Verification (Updated for Projects)
-        file_match = re.search(r"Saved (.+?) to (.+?)/", step_output)
+        # New: Execution & Syntax Verification
         execution_status = "N/A"
-        if file_match:
+        syntax_ok = True
+        
+        # Find all files mentioned
+        file_matches = re.finditer(r"Saved (.+?) to (.+?)/", step_output)
+        found_any_file = False
+        
+        for file_match in file_matches:
+            found_any_file = True
             filename = file_match.group(1).strip()
             dir_name = file_match.group(2).strip()
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -95,49 +120,73 @@ def run_benchmark():
                 filepath = os.path.join(root_dir, 'scratch', filename)
             else:
                 filepath = os.path.join(root_dir, 'scratch', dir_name, filename)
-                
-            print(f"\n[*] Execution Verification: Running {filename} in {dir_name}...")
-            try:
-                # Run the generated script
-                run_res = subprocess.run(["python", filepath], capture_output=True, text=True, timeout=20)
-                if run_res.returncode == 0:
-                    execution_status = "SUCCESS"
-                else:
-                    msg = run_res.stderr.strip() or run_res.stdout.strip()
-                    execution_status = f"FAILED ({msg[:40]}...)"
-            except Exception as e:
-                execution_status = f"ERROR ({str(e)})"
-            print(f"[*] Execution Result: {execution_status}")
+
+            # 1. Syntax Check (Python files)
+            if filename.endswith(".py") and os.path.exists(filepath):
+                try:
+                    py_compile.compile(filepath, doraise=True)
+                except py_compile.PyCompileError as e:
+                    print(f"  [!] Syntax Error in {filename}: {str(e)[:50]}...")
+                    syntax_ok = False
+
+            # 2. Execution (Run primary script if detected)
+            # Only run if it's the 'main' file or if it's a single script test
+            is_main = filename in ["main.py", "gcd.py", "fib.py", "filter.py", "sort.py", "convert.py"]
+            if is_main and os.path.exists(filepath):
+                print(f"\n[*] Execution Verification: Running {filename}...")
+                try:
+                    run_res = subprocess.run(["python", filepath], capture_output=True, text=True, timeout=20)
+                    if run_res.returncode == 0:
+                        execution_status = "SUCCESS"
+                    else:
+                        msg = run_res.stderr.strip() or run_res.stdout.strip()
+                        execution_status = f"FAILED ({msg[:40]}...)"
+                except Exception as e:
+                    execution_status = f"ERROR ({str(e)})"
+                print(f"[*] Execution Result: {execution_status}")
 
         entry = {
             "step": i + 1,
-            "query": question,
+            "query": str(question)[:100],
             "duration": round(step_duration, 2),
             "is_cached": is_cached,
             "search_triggered": "[Headless Search]" in step_output,
             "facts_extracted": len(re.findall(r"\[FACT\].*", step_output)),
             "code_execution": execution_status,
+            "syntax_pass": syntax_ok if found_any_file else "N/A",
             "project_mode": "Project Mode Detected" in step_output,
             "brain_synced": "BrainSync" in step_output,
+            "context_spin_down": is_spin_down,
+            "context_spin_up": is_spin_up,
             "output_len": len(step_output)
         }
         full_chain.append(entry)
 
-        # Additional check: if project mode ran, verify directory was created
+        # Additional check: if project mode ran, verify directory was created & PLAN.md exists
         if entry["project_mode"]:
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
             scratch_dirs = [d for d in os.listdir(os.path.join(root_dir, 'scratch'))
                             if d.startswith('project_')]
             proj_created = len(scratch_dirs) > 0
+            
+            plan_exists = False
+            if proj_created:
+                plan_path = os.path.join(root_dir, 'scratch', scratch_dirs[-1], 'PLAN.md')
+                plan_exists = os.path.exists(plan_path)
+            
             entry["project_dir_created"] = proj_created
+            entry["plan_created"] = plan_exists
+            
             print(f"[*] Project Dir Check: {'✅ Created' if proj_created else '❌ Missing'} ({scratch_dirs[-1] if scratch_dirs else 'none'})")
+            print(f"[*] Project Plan Check: {'✅ PLAN.md found' if plan_exists else '❌ PLAN.md missing'}")
         else:
             entry["project_dir_created"] = None
+            entry["plan_created"] = None
 
         print(f"\n[+] Step {i+1} complete in {entry['duration']}s | "
-              f"Cache: {entry['is_cached']} | Search: {entry['search_triggered']} | "
-              f"Facts: {entry['facts_extracted']} | Code: {entry['code_execution']} | "
-              f"Project: {entry['project_mode']} | BrainSync: {entry['brain_synced']}")
+              f"Cache: {entry['is_cached']} | Code: {entry['code_execution']} | "
+              f"Syntax: {entry['syntax_pass']} | Project: {entry['project_mode']} | "
+              f"SpinDown: {entry['context_spin_down']} | SpinUp: {entry['context_spin_up']}")
         
         # Cleanly exit this step's process
         try:
@@ -158,34 +207,44 @@ def run_benchmark():
     search_ops = sum(1 for e in full_chain if e['search_triggered'])
     cache_hits = sum(1 for e in full_chain if e['is_cached'])
     code_success = sum(1 for e in full_chain if e['code_execution'] == "SUCCESS")
-    code_total = sum(1 for e in full_chain if e['code_execution'] != "N/A")
+    code_total = sum(1 for e in full_chain if e['code_execution'] not in ["N/A", "N/A"]) # Corrected count logic
+    code_actual_total = sum(1 for e in full_chain if e['code_execution'] != "N/A")
+    syntax_pass = sum(1 for e in full_chain if e['syntax_pass'] is True)
+    syntax_total = sum(1 for e in full_chain if e['syntax_pass'] != "N/A")
     project_steps = [e for e in full_chain if e['project_mode']]
     proj_dirs_ok = sum(1 for e in project_steps if e.get('project_dir_created'))
+    plans_ok = sum(1 for e in project_steps if e.get('plan_created'))
     brain_syncs = sum(1 for e in full_chain if e['brain_synced'])
+    spin_downs = sum(1 for e in full_chain if e['context_spin_down'])
+    spin_ups = sum(1 for e in full_chain if e['context_spin_up'])
 
-    print("\n" + "="*60)
-    print("  ULTIMATE BENCHMARK SCORECARD")
-    print("="*60)
-    print(f"  Total Time          : {round(total_duration, 2)}s")
-    print(f"  KG Triplets Extracted: {total_facts}")
-    print(f"  Web Searches        : {search_ops}")
-    print(f"  Semantic Cache Hits : {cache_hits}")
-    print(f"  Code Execution Pass : {code_success}/{code_total}")
-    print(f"  Project Dirs Created: {proj_dirs_ok}/{len(project_steps)}")
-    print(f"  Brain Syncs         : {brain_syncs}")
-    print("="*60)
+    print("\n" + "="*70)
+    print("  ULTIMATE BENCHMARK SCORECARD v2.0")
+    print("="*70)
+    print(f"  Total Time           : {round(total_duration, 2)}s")
+    print(f"  Facts Extracted      : {total_facts}")
+    print(f"  Web Searches         : {search_ops}")
+    print(f"  Semantic Cache Hits  : {cache_hits}")
+    print(f"  Code Execution Pass  : {code_success}/{code_actual_total}")
+    print(f"  Syntax Validation    : {syntax_pass}/{syntax_total}")
+    print(f"  Project Dirs Created : {proj_dirs_ok}/{len(project_steps) if project_steps else 0}")
+    print(f"  Project Plans (MD)   : {plans_ok}/{len(project_steps) if project_steps else 0}")
+    print(f"  Context Spin-Downs   : {spin_downs}")
+    print(f"  Session Continuity   : {spin_ups}")
+    print(f"  Brain Syncs          : {brain_syncs}")
+    print("="*70)
     print("\n  Per-Step Summary:")
-    print(f"  {'Step':<5} {'Time':>7}  {'Cache':<6} {'Search':<7} {'Facts':<6} {'Code':<10} {'Project':<8} {'Sync':<5}")
+    print(f"  {'Step':<5} {'Time':>7}  {'Cache':<6} {'Code':<10} {'Syntax':<7} {'Proj':<5} {'SD':<3} {'SU':<3}")
     print("  " + "-"*65)
     for e in full_chain:
         print(f"  {e['step']:<5} {e['duration']:>6.1f}s  "
               f"{'Y' if e['is_cached'] else 'N':<6} "
-              f"{'Y' if e['search_triggered'] else 'N':<7} "
-              f"{e['facts_extracted']:<6} "
               f"{e['code_execution'][:9]:<10} "
-              f"{'Y' if e['project_mode'] else 'N':<8} "
-              f"{'Y' if e['brain_synced'] else 'N':<5}")
-    print("="*60)
+              f"{'PASS' if e['syntax_pass'] is True else ('FAIL' if e['syntax_pass'] is False else 'N/A'):<7} "
+              f"{'Y' if e['project_mode'] else 'N':<5} "
+              f"{'Y' if e['context_spin_down'] else 'N':<3} "
+              f"{'Y' if e['context_spin_up'] else 'N':<3}")
+    print("="*70)
 
     # ── Brain Sync of benchmark results ──────────────────────────────────────
     print("\n--- Syncing benchmark results to Agent Brain ---")
