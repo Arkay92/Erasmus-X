@@ -7,6 +7,7 @@ import sys
 
 # Ensure project root is in sys.path for direct imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.stdout.reconfigure(encoding='utf-8')
 
 from core import config
 
@@ -105,24 +106,37 @@ def run_benchmark():
         # New: Execution & Syntax Verification
         execution_status = "N/A"
         syntax_ok = True
-        
-        # Find all files mentioned
-        file_matches = re.finditer(r"Saved (.+?) to (.+?)/", step_output)
+               # Find all files mentioned
+        file_matches = re.finditer(r"Saved validated (.+)", step_output)
         found_any_file = False
         
         for file_match in file_matches:
             found_any_file = True
             filename = file_match.group(1).strip()
-            dir_name = file_match.group(2).strip()
+            # Clean up potential extra log markers like " [Local LLM]" or " from ..."
+            filename = filename.split()[0]
+            
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
             
-            if dir_name == "scratch":
-                filepath = os.path.join(root_dir, 'scratch', filename)
-            else:
-                filepath = os.path.join(root_dir, 'scratch', dir_name, filename)
+            # Find the file in sandboxes
+            sandbox_root = os.path.join(root_dir, 'sandboxes')
+            filepath = None
+            
+            # Search project subdirectories if needed
+            if os.path.exists(sandbox_root):
+                for sd in os.listdir(sandbox_root):
+                    potential = os.path.join(sandbox_root, sd, filename)
+                    if os.path.exists(potential):
+                        filepath = potential
+                        break
+                if not filepath:
+                    # Check top level
+                    potential = os.path.join(sandbox_root, filename)
+                    if os.path.exists(potential):
+                        filepath = potential
 
             # 1. Syntax Check (Python files)
-            if filename.endswith(".py") and os.path.exists(filepath):
+            if filename.endswith(".py") and filepath and os.path.exists(filepath):
                 try:
                     py_compile.compile(filepath, doraise=True)
                 except py_compile.PyCompileError as e:
@@ -130,12 +144,11 @@ def run_benchmark():
                     syntax_ok = False
 
             # 2. Execution (Run primary script if detected)
-            # Only run if it's the 'main' file or if it's a single script test
             is_main = filename in ["main.py", "gcd.py", "fib.py", "filter.py", "sort.py", "convert.py"]
-            if is_main and os.path.exists(filepath):
+            if is_main and filepath and os.path.exists(filepath):
                 print(f"\n[*] Execution Verification: Running {filename}...")
                 try:
-                    run_res = subprocess.run(["python", filepath], capture_output=True, text=True, timeout=20)
+                    run_res = subprocess.run([sys.executable, filepath], capture_output=True, text=True, timeout=20)
                     if run_res.returncode == 0:
                         execution_status = "SUCCESS"
                     else:
@@ -158,26 +171,27 @@ def run_benchmark():
             "brain_synced": "BrainSync" in step_output,
             "context_spin_down": is_spin_down,
             "context_spin_up": is_spin_up,
-            "output_len": len(step_output)
+            "output_len": len(step_output),
+            "raw_output": step_output[:500] 
         }
         full_chain.append(entry)
 
         # Additional check: if project mode ran, verify directory was created & PLAN.md exists
         if entry["project_mode"]:
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            scratch_dirs = [d for d in os.listdir(os.path.join(root_dir, 'scratch'))
+            sandbox_dirs = [d for d in os.listdir(os.path.join(root_dir, 'sandboxes'))
                             if d.startswith('project_')]
-            proj_created = len(scratch_dirs) > 0
+            proj_created = len(sandbox_dirs) > 0
             
             plan_exists = False
             if proj_created:
-                plan_path = os.path.join(root_dir, 'scratch', scratch_dirs[-1], 'PLAN.md')
+                plan_path = os.path.join(root_dir, 'sandboxes', sandbox_dirs[-1], 'PLAN.md')
                 plan_exists = os.path.exists(plan_path)
             
             entry["project_dir_created"] = proj_created
             entry["plan_created"] = plan_exists
             
-            print(f"[*] Project Dir Check: {'✅ Created' if proj_created else '❌ Missing'} ({scratch_dirs[-1] if scratch_dirs else 'none'})")
+            print(f"[*] Project Dir Check: {'✅ Created' if proj_created else '❌ Missing'} ({sandbox_dirs[-1] if sandbox_dirs else 'none'})")
             print(f"[*] Project Plan Check: {'✅ PLAN.md found' if plan_exists else '❌ PLAN.md missing'}")
         else:
             entry["project_dir_created"] = None

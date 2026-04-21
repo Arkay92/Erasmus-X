@@ -29,3 +29,10 @@ CACHE_THRESHOLD = 0.98
 # Prompt Compression (McMenemy Strategy)
 ENABLE_PROMPT_COMPRESSION = True
 COMPRESSION_DEBUG = True  # Set to True to see char savings in console
+
+# Phase 5: Resource Optimization & Sandbox
+ENABLE_LOCAL_LLM = True
+LOCAL_MODEL_TYPE = "gpt2" # "gpt2", "gpt2-medium"
+SANDBOX_ENFORCED = True
+SANDBOX_ROOT = "sandboxes"
+SANDBOX_RETENTION_HOURS = 24 

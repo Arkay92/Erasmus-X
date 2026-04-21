@@ -13,7 +13,8 @@ class WebSearcher:
             for r in results:
                 body = r.get('body', '')
                 if len(body) > 10:
-                    snippets.append(f"Source: {r.get('title')}\nContent: {body[:300]}")
+                    url = r.get('href', 'No URL available')
+                    snippets.append(f"Source: {r.get('title')}\nURL: {url}\nContent: {body[:500]}")
             
             if snippets:
                 return "\n\n".join(snippets)

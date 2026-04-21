@@ -24,7 +24,7 @@ DISCOVERY_KEYWORDS = ['who', 'what', 'where', 'when', 'why', 'how', 'find', 'sea
 # Prompt templates
 CONTEXT_PREVIOUS = "PREVIOUS KNOWLEDGE: "
 CONTEXT_FACTS = "FACTS: "
-CONTEXT_SOURCE_START = "--- SOURCE DATA ---\n"
+CONTEXT_SOURCE_START = "--- SOURCE DATA (Trustworthy) ---\n"
 CONTEXT_SOURCE_END = "\n--- END SOURCE ---"
 
 # Meta-Question Generation for Seeding (Instructional for Stability)
@@ -36,3 +36,22 @@ CODE_REVIEW_PROMPT = _load_prompt("code_review_prompt.md")
 
 # Project Planning Prompts
 PROJECT_PLANNER_PROMPT = _load_prompt("project_planner_prompt.md")
+
+# Final Project Summary Report Prompt
+PROJECT_REPORT_PROMPT = """[PROJECT REPORT GENERATOR]
+Based on the following project plan and the list of files actually generated, create a professional summary.
+Include:
+1. **Description**: What the project does.
+2. **Entrypoint**: Which file to run first.
+3. **Run Instructions**: How to execute the project.
+4. **Unresolved Issues**: Anything missing or failed during construction.
+
+PLAN:
+{plan_text}
+
+GENERATED FILES:
+{files_list}
+
+TEST RESULTS:
+{test_results}
+"""

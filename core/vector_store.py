@@ -2,6 +2,8 @@ import torch
 import torchhd
 from torchhd import embeddings
 import os
+import shutil
+import tempfile
 
 class HypervectorDB:
     def __init__(self, filename="memories/agent_brain.pt", dim=10000):
@@ -65,7 +67,9 @@ class HypervectorDB:
         """Logs a conversation/benchmark step and vectorizes it."""
         self.convo_chain.append(entry)
         # Vectorize the query and response for "meta-memory" retrieval
-        log_text = f"Query: {entry.get('query')} | Response: {entry.get('raw_output')[:200]}"
+        query = entry.get('query', 'Unknown')
+        output = entry.get('raw_output', entry.get('raw_response', 'No output'))
+        log_text = f"Query: {query} | Response: {str(output)[:200]}"
         self.add_document(log_text)
 
     def add_to_cache(self, query, raw_response, clean_ans):
@@ -116,7 +120,12 @@ class HypervectorDB:
         tool_v = torch.stack([self.encode(t) for t in tool_seeds])
         tool_centroid = torchhd.functional.multiset(tool_v)
         
-        self.intent_centers = torch.stack([search_centroid, recall_centroid, tool_centroid])
+        # 4. Project Intent (Complex/Multi-file Requests)
+        project_seeds = ["design and implement", "multi-file application", "system architecture", "build a complete project", "create an app", "software system with sqlite", "complex application generator", "create a project"]
+        project_v = torch.stack([self.encode(p) for p in project_seeds])
+        project_centroid = torchhd.functional.multiset(project_v)
+        
+        self.intent_centers = torch.stack([search_centroid, recall_centroid, tool_centroid, project_centroid])
         self.save()
 
     def classify_intent(self, query):
@@ -132,9 +141,30 @@ class HypervectorDB:
         sims = torchhd.functional.cosine_similarity(q_v, self.intent_centers)
         
         score, idx = torch.max(sims, dim=0)
-        labels = ["SEARCH", "RECALL", "TOOL"]
+        labels = ["SEARCH", "RECALL", "TOOL", "PROJECT"]
         label = labels[idx.item()]
         return label, score.item()
+
+    def refine_intent(self, label, example_text):
+        """
+        Dynamically updates a class centroid with a new example.
+        This is the 'learning' part of the HDC neurosymbolic brain.
+        """
+        if self.intent_centers is None:
+            self._init_intents()
+            
+        labels = ["SEARCH", "RECALL", "TOOL", "PROJECT"]
+        if label not in labels:
+            return
+            
+        idx = labels.index(label)
+        new_v = self.encode(example_text)
+        
+        # Bundle the new vector into the existing centroid
+        # This shifts the centroid towards the new example
+        self.intent_centers[idx] = torchhd.functional.multiset(torch.stack([self.intent_centers[idx], new_v]))
+        self.save()
+        print(f"[*] Brain learned new pattern for {label} intent.")
 
     def search(self, query, threshold=0.10, top_k=3):
         if not self.documents or self.memory_tensor is None:
@@ -156,6 +186,8 @@ class HypervectorDB:
                 results.append((score, self.documents[idx]))
                 if len(results) >= top_k:
                     break
+        return results
+
     def search_by_hv(self, query_hv, threshold=0.10, top_k=3):
         """Internal search using a pre-computed hypervector."""
         if not self.documents or self.memory_tensor is None:
@@ -178,6 +210,11 @@ class HypervectorDB:
     def save(self):
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(self.filename), exist_ok=True)
+        
+        # 1. Create backup of current stable file
+        if os.path.exists(self.filename):
+            shutil.copy2(self.filename, self.filename + ".bak")
+
         data = {
             "documents": self.documents,
             "memory_tensor": self.memory_tensor,
@@ -187,7 +224,17 @@ class HypervectorDB:
             "cache_tensor": self.cache_tensor,
             "intent_centers": self.intent_centers
         }
-        torch.save(data, self.filename)
+        
+        # 2. Atomic Save: Write to temp file and rename (prevent corruption on crash)
+        fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(self.filename))
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                torch.save(data, f)
+            # Rename is atomic on Unix and most Windows scenarios
+            shutil.move(temp_path, self.filename)
+        except Exception as e:
+            if os.path.exists(temp_path): os.remove(temp_path)
+            print(f"[Memory Save Error] {e}")
 
     def load(self):
         # Migration check: handle change from hypervector_memory.pt to agent_brain.pt
@@ -199,16 +246,32 @@ class HypervectorDB:
 
         if os.path.exists(target_file):
             try:
-                data = torch.load(target_file, weights_only=False)
-                self.documents = data.get("documents", [])
-                self.memory_tensor = data.get("memory_tensor")
-                self.graph_data = data.get("graph_data")
-                self.convo_chain = data.get("convo_chain", [])
-                self.prompt_cache = data.get("prompt_cache", {})
-                self.cache_tensor = data.get("cache_tensor")
-                self.intent_centers = data.get("intent_centers")
+                self._load_from_path(target_file)
             except Exception as e:
-                print(f"[Memory Load Error] {e}. Attempting recovery.")
+                print(f"[Memory Load Error] {e}. Attempting recovery from backup.")
+                backup = target_file + ".bak"
+                if os.path.exists(backup):
+                    try:
+                        self._load_from_path(backup)
+                        print("[+] Successfully recovered from backup.")
+                    except Exception as be:
+                        print(f"[Memory Load Error] Backup also failed: {be}")
+        
+        # Check if intent centers need expansion (e.g. after update)
+        if self.intent_centers is not None and self.intent_centers.shape[0] < 4:
+            print("[*] Upgrading intent centers to include PROJECT intent...")
+            self._init_intents()
+
+    def _load_from_path(self, path):
+        """Internal helper to load torch data into memory."""
+        data = torch.load(path, weights_only=False)
+        self.documents = data.get("documents", [])
+        self.memory_tensor = data.get("memory_tensor")
+        self.graph_data = data.get("graph_data")
+        self.convo_chain = data.get("convo_chain", [])
+        self.prompt_cache = data.get("prompt_cache", {})
+        self.cache_tensor = data.get("cache_tensor")
+        self.intent_centers = data.get("intent_centers")
 
         # Specific migration for Knowledge Graph JSON
         kg_json = "memories/knowledge_graph.json"

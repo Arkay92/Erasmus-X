@@ -1,0 +1,133 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Neurosymbolic Knowledge Graph</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { margin: 0; background: #0b0e14; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        .node { stroke: #fff; stroke-width: 1.5px; cursor: pointer; }
+        .link { stroke: #4a4e69; stroke-opacity: 0.6; stroke-width: 1px; }
+        .label { fill: #9a9dbd; font-size: 10px; pointer-events: none; }
+        .node-label { fill: #ffffff; font-size: 12px; pointer-events: none; text-shadow: 0 0 5px #000; }
+        #header { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(20, 24, 33, 0.8); padding: 15px; border-radius: 8px; border: 1px solid #2d3446; }
+        h1 { margin: 0; font-size: 18px; color: #4cc9f0; text-transform: uppercase; letter-spacing: 2px; }
+        p { margin: 5px 0 0; font-size: 11px; opacity: 0.7; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>Gemma Knowledge Graph</h1>
+        <p>Interactive Visualization of Learned Concepts</p>
+    </div>
+    <svg id="viz"></svg>
+
+    <script>
+        const data = {"nodes": [{"id": "categorical imperative", "name": "categorical imperative"}, {"id": "economic system", "name": "economic system"}, {"id": "the categorical imperative", "name": "the categorical imperative"}, {"id": "consistency", "name": "consistency"}, {"id": "13th-century economics", "name": "13th-century economics"}, {"id": "trade", "name": "trade"}, {"id": "deontological philosophy", "name": "deontological philosophy"}, {"id": "higgs boson", "name": "higgs boson"}, {"id": "hard problem of consciousness", "name": "hard problem of consciousness"}, {"id": "physical structure", "name": "physical structure"}, {"id": "subjective experience", "name": "subjective experience"}, {"id": "physical manifestation", "name": "physical manifestation"}, {"id": "explaining subjective experience", "name": "explaining subjective experience"}, {"id": "comparison", "name": "comparison"}, {"id": "western roman empire", "name": "western roman empire"}, {"id": "structural analogy", "name": "structural analogy"}, {"id": "systemic failure", "name": "systemic failure"}, {"id": "failure mechanism", "name": "failure mechanism"}, {"id": "outcome", "name": "outcome"}, {"id": "application of categorical imperative", "name": "application of categorical imperative"}, {"id": "changed", "name": "changed"}, {"id": "principle", "name": "principle"}, {"id": "economic analysis", "name": "economic analysis"}, {"id": "shift", "name": "shift"}, {"id": "g\u00f6del's incompleteness theorems", "name": "g\u00f6del's incompleteness theorems"}, {"id": "formal axiomatic systems", "name": "formal axiomatic systems"}, {"id": "spacex starship architecture", "name": "spacex starship architecture"}, {"id": "complex autonomous systems", "name": "complex autonomous systems"}, {"id": "logical relationship", "name": "logical relationship"}, {"id": "formal limitation versus systemic complexity", "name": "formal limitation versus systemic complexity"}, {"id": "gcd.py", "name": "gcd.py"}, {"id": "python function", "name": "python function"}, {"id": "fib.py", "name": "fib.py"}, {"id": "calculate_nth_fib", "name": "calculate_nth_fib"}, {"id": "fib_generator", "name": "fib_generator"}, {"id": "yields", "name": "yields"}, {"id": "uses", "name": "uses"}, {"id": "filter_long_fruits", "name": "filter_long_fruits"}, {"id": "function", "name": "function"}, {"id": "list[str]", "name": "list[str]"}, {"id": "len()", "name": "len()"}, {"id": "list processing", "name": "list processing"}, {"id": "bubble_sort", "name": "bubble_sort"}, {"id": "list sorting algorithm", "name": "list sorting algorithm"}, {"id": "array manipulation", "name": "array manipulation"}, {"id": "sorting algorithm", "name": "sorting algorithm"}, {"id": "convert.py", "name": "convert.py"}, {"id": "python script", "name": "python script"}, {"id": "fahrenheit_to_celsius", "name": "fahrenheit_to_celsius"}, {"id": "conversion", "name": "conversion"}, {"id": "cryptography", "name": "cryptography"}, {"id": "caesar cipher", "name": "caesar cipher"}, {"id": "history", "name": "history"}, {"id": "historical_context", "name": "historical_context"}, {"id": "cryptography relates caesar cipher", "name": "cryptography relates caesar cipher"}, {"id": "higgs boson relates to hard problem of consciousness", "name": "higgs boson relates to hard problem of consciousness"}, {"id": "enigma machine", "name": "enigma machine"}, {"id": "operational_security", "name": "operational_security"}, {"id": "intelligence_warfare", "name": "intelligence_warfare"}], "links": [{"source": "categorical imperative", "target": "economic system", "label": "application"}, {"source": "categorical imperative", "target": "principle", "label": "trade"}, {"source": "the categorical imperative", "target": "consistency", "label": "test"}, {"source": "13th-century economics", "target": "trade", "label": "context"}, {"source": "deontological philosophy", "target": "categorical imperative", "label": "concept"}, {"source": "higgs boson", "target": "hard problem of consciousness", "label": "relates to"}, {"source": "higgs boson", "target": "physical manifestation", "label": "represents"}, {"source": "hard problem of consciousness", "target": "explaining subjective experience", "label": "is the challenge of"}, {"source": "physical structure", "target": "subjective experience", "label": "contrasts with"}, {"source": "comparison", "target": "western roman empire", "label": "relates"}, {"source": "structural analogy", "target": "systemic failure", "label": "relates"}, {"source": "failure mechanism", "target": "systemic failure", "label": "relates"}, {"source": "outcome", "target": "systemic failure", "label": "relates"}, {"source": "application of categorical imperative", "target": "changed", "label": "13th-century economics"}, {"source": "economic analysis", "target": "shift", "label": "duty-based"}, {"source": "g\u00f6del's incompleteness theorems", "target": "formal axiomatic systems", "label": "relates to"}, {"source": "spacex starship architecture", "target": "complex autonomous systems", "label": "relates to"}, {"source": "logical relationship", "target": "formal limitation versus systemic complexity", "label": "relates to"}, {"source": "gcd.py", "target": "python function", "label": "relates"}, {"source": "fib.py", "target": "calculate_nth_fib", "label": "relates to"}, {"source": "calculate_nth_fib", "target": "fib_generator", "label": "relates to"}, {"source": "calculate_nth_fib", "target": "uses", "label": "relates to"}, {"source": "fib_generator", "target": "yields", "label": "relates to"}, {"source": "filter_long_fruits", "target": "function", "label": "is defined by"}, {"source": "filter_long_fruits", "target": "list[str]", "label": "returns"}, {"source": "filter_long_fruits", "target": "len()", "label": "uses"}, {"source": "filter_long_fruits", "target": "list processing", "label": "demonstrates"}, {"source": "bubble_sort", "target": "python function", "label": "relates"}, {"source": "bubble_sort", "target": "list sorting algorithm", "label": "relates"}, {"source": "bubble_sort", "target": "array manipulation", "label": "relates"}, {"source": "bubble_sort", "target": "list processing", "label": "relates"}, {"source": "bubble_sort", "target": "sorting algorithm", "label": "relates"}, {"source": "convert.py", "target": "python script", "label": "relates"}, {"source": "fahrenheit_to_celsius", "target": "function", "label": "relates"}, {"source": "fahrenheit_to_celsius", "target": "conversion", "label": "relates"}, {"source": "cryptography", "target": "caesar cipher", "label": "relates"}, {"source": "cryptography", "target": "enigma machine", "label": "relates"}, {"source": "history", "target": "cryptography", "label": "relates"}, {"source": "historical_context", "target": "caesar cipher", "label": "relates"}, {"source": "historical_context", "target": "enigma machine", "label": "relates"}, {"source": "cryptography relates caesar cipher", "target": "higgs boson relates to hard problem of consciousness", "label": "historical_context relates caesar cipher"}, {"source": "operational_security", "target": "enigma machine", "label": "relates"}, {"source": "intelligence_warfare", "target": "enigma machine", "label": "relates"}]};
+        
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        const svg = d3.select("#viz")
+            .attr("width", width)
+            .attr("height", height)
+            .call(d3.zoom().on("zoom", (event) => {
+                container.attr("transform", event.transform);
+            }));
+
+        const container = svg.append("g");
+
+        const simulation = d3.forceSimulation(data.nodes)
+            .force("link", d3.forceLink(data.links).id(d => d.id).distance(150))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("center", d3.forceCenter(width / 2, height / 2));
+
+        // Define arrow markers
+        svg.append("defs").append("marker")
+            .attr("id", "arrowhead")
+            .attr("viewBox", "-0 -5 10 10")
+            .attr("refX", 20)
+            .attr("refY", 0)
+            .attr("orient", "auto")
+            .attr("markerWidth", 6)
+            .attr("markerHeight", 6)
+            .attr("xoverflow", "visible")
+            .append("svg:path")
+            .attr("d", "M 0,-5 L 10 ,0 L 0,5")
+            .attr("fill", "#4a4e69")
+            .style("stroke","none");
+
+        const link = container.append("g")
+            .selectAll("line")
+            .data(data.links)
+            .join("line")
+            .attr("class", "link")
+            .attr("marker-end", "url(#arrowhead)");
+
+        const edgeLabels = container.append("g")
+            .selectAll("text")
+            .data(data.links)
+            .join("text")
+            .attr("class", "label")
+            .text(d => d.label);
+
+        const node = container.append("g")
+            .selectAll("circle")
+            .data(data.nodes)
+            .join("circle")
+            .attr("r", 8)
+            .attr("class", "node")
+            .attr("fill", d => d3.interpolateTurbo(Math.random()))
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended));
+
+        const nodeLabels = container.append("g")
+            .selectAll("text")
+            .data(data.nodes)
+            .join("text")
+            .attr("class", "node-label")
+            .attr("dx", 12)
+            .attr("dy", 4)
+            .text(d => d.name);
+
+        simulation.on("tick", () => {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            node
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y);
+            
+            nodeLabels
+                .attr("x", d => d.x)
+                .attr("y", d => d.y);
+
+            edgeLabels
+                .attr("x", d => (d.source.x + d.target.x) / 2)
+                .attr("y", d => (d.source.y + d.target.y) / 2);
+        });
+
+        function dragstarted(event) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            event.subject.fx = event.subject.x;
+            event.subject.fy = event.subject.y;
+        }
+
+        function dragged(event) {
+            event.subject.fx = event.x;
+            event.subject.fy = event.y;
+        }
+
+        function dragended(event) {
+            if (!event.active) simulation.alphaTarget(0);
+            event.subject.fx = null;
+            event.subject.fy = null;
+        }
+    </script>
+</body>
+</html>
