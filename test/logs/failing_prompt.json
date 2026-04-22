@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "Answer strictly in 2-3 sentences. \nNO bold. NO headers. NO markdown formatting.\nNO [FILE:] tags or code blocks.\nNO [FACT] triplets.\nBe purely conversational and extremely brief."
+  },
+  {
+    "role": "user",
+    "content": "\n\nUSER QUESTION: Can you summarize our entire conversation so far? (This should trigger Spin-Down and then Spin-Up)"
+  }
+]

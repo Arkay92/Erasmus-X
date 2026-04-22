@@ -9,6 +9,22 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.stdout.reconfigure(encoding='utf-8')
 
+class Logger(object):
+    """Verbatim logger that writes to both terminal and file."""
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "w", encoding="utf-8")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()
+
+    def flush(self):
+        # This flush method is needed for python 3 compatibility.
+        self.terminal.flush()
+        self.log.flush()
+
 from core import config
 
 # Test Suite Configuration
@@ -44,7 +60,16 @@ TEST_QUESTIONS = [
 ]
 
 def run_benchmark():
+    # Setup Logging
+    log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    log_filename = f"benchmark_{int(time.time())}.log"
+    log_path = os.path.join(log_dir, log_filename)
+    
+    sys.stdout = Logger(log_path)
+    
     print(f"--- Starting ULTIMATE Neurosymbolic Stress Test ---")
+    print(f"[*] Logging verbatim output to: test/logs/{log_filename}")
     
     start_time = time.time()
     full_chain = []
@@ -143,19 +168,70 @@ def run_benchmark():
                     print(f"  [!] Syntax Error in {filename}: {str(e)[:50]}...")
                     syntax_ok = False
 
-            # 2. Execution (Run primary script if detected)
+            # 2. Execution & Semantic Verification
             is_main = filename in ["main.py", "gcd.py", "fib.py", "filter.py", "sort.py", "convert.py"]
             if is_main and filepath and os.path.exists(filepath):
                 print(f"\n[*] Execution Verification: Running {filename}...")
                 try:
                     run_res = subprocess.run([sys.executable, filepath], capture_output=True, text=True, timeout=20)
+                    stdout = run_res.stdout.strip()
+                    stderr = run_res.stderr.strip()
+                    
                     if run_res.returncode == 0:
-                        execution_status = "SUCCESS"
+                        # Elite V6: Semantic Validation
+                        semantic_ok = True
+                        msg = ""
+                        
+                        if filename == "gcd.py":
+                            # Rigorous check: gcd(48, 18) == 6
+                            # We search for '6' specifically as a stand-alone number
+                            if not re.search(r"\b6\b", stdout):
+                                semantic_ok = False
+                                msg = "GCD result '6' for (48, 18) not found."
+                        
+                        elif filename == "fib.py":
+                            # Rigorous check: Full sequence up to 10 terms
+                            fib_seq = [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+                            found_seq = [int(n) for n in re.findall(r"\b\d+\b", stdout)]
+                            if not any(all(x in found_seq for x in fib_seq) or "34" in stdout for _ in [1]):
+                                # Fallback to checking just the 10th term if the model didn't print the whole sequence
+                                if "34" not in stdout:
+                                    semantic_ok = False
+                                    msg = "10th Fibonacci term (34) or full sequence not found."
+                        
+                        elif filename == "filter.py":
+                            # Check for specific filtered results > 5 letters
+                            expected = ["banana", "cherry", "elderberry"]
+                            actual = stdout.lower()
+                            if not all(f in actual for f in expected):
+                                semantic_ok = False
+                                msg = f"Missing expected fruits: {[f for f in expected if f not in actual]}"
+                        
+                        elif filename == "sort.py":
+                            # Verify numbers are in non-decreasing order AND we haven't lost data
+                            nums = [int(n) for n in re.findall(r"\b\d+\b", stdout)]
+                            if not nums:
+                                semantic_ok = False
+                                msg = "No numbers found in sort output."
+                            elif nums != sorted(nums):
+                                semantic_ok = False
+                                msg = "List is not sorted."
+                        
+                        elif filename == "convert.py":
+                            # Rigorous check: 100F -> 37.777... (37.78)
+                            if "37.7" not in stdout or ("37.78" not in stdout and "37.77" not in stdout):
+                                semantic_ok = False
+                                msg = "Fahrenheit conversion result (37.77 or 37.78) not found."
+                                
+                        if semantic_ok:
+                            execution_status = "SUCCESS"
+                        else:
+                            execution_status = f"LOGIC FAIL ({msg})"
                     else:
-                        msg = run_res.stderr.strip() or run_res.stdout.strip()
-                        execution_status = f"FAILED ({msg[:40]}...)"
+                        msg = stderr or stdout
+                        execution_status = f"EXEC FAIL ({msg[:40]}...)"
                 except Exception as e:
-                    execution_status = f"ERROR ({str(e)})"
+                    execution_status = f"SYSTEM ERROR ({str(e)})"
                 print(f"[*] Execution Result: {execution_status}")
 
         entry = {

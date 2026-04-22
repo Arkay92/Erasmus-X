@@ -35,8 +35,8 @@ class LocalLLM:
             print(f"[!] Failed to load Local LLM: {e}")
             self.generator = None
 
-    def generate(self, prompt, max_new_tokens=20, temperature=0.1):
-        """Generates a completion for simple tasks."""
+    def generate(self, prompt, max_new_tokens=20, temperature=0.1, stop=None):
+        """Generates a completion for simple tasks with stop sequences."""
         if not self.generator:
             return None
             
@@ -52,13 +52,32 @@ class LocalLLM:
             )
             # Extract only the newly generated text
             full_text = results[0]['generated_text']
+            
             # Small heuristic to strip prompt from output
+            output = full_text
             if full_text.startswith(prompt):
-                return full_text[len(prompt):].strip()
-            return full_text.strip()
+                output = full_text[len(prompt):].strip()
+            
+            # Stop sequence enforcement (Phase 7)
+            if stop:
+                for s in stop:
+                    if s in output:
+                        output = output.split(s)[0]
+            
+            return output.strip()
         except Exception as e:
             print(f"[!] Local LLM generation error: {e}")
             return None
+
+    def fast_intent_classify(self, text):
+        """Speculative intent classification for routing (optimized)."""
+        prompt = f"Categorize intent (SHELL, GREETING, INFO): {text[:50]}\nIntent: "
+        res = self.generate(prompt, max_new_tokens=5, temperature=0)
+        if not res: return "UNKNOWN"
+        res = res.upper()
+        if "SHELL" in res or "CMD" in res: return "SHELL"
+        if "GREET" in res or "HI" in res: return "GREETING"
+        return "INFO"
 
     def classify_complexity(self, text):
         """Pre-review logic to decide if a task is 'simple'."""

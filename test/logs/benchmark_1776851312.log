@@ -1,0 +1,503 @@
+--- Starting ULTIMATE Neurosymbolic Stress Test ---
+[*] Logging verbatim output to: test/logs/benchmark_1776851312.log
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 1] Sending: How does the structure of the Higgs boson relate to the 'Hard Problem of Conscio...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Reasoning Gateway: Complex query detected. Escalating to DEEP mode.
+Gemma is thinking (DEEP mode)...
+[DEBUG RAW OUTPUT]: 'The relationship between the structure of the Higgs boson and the \'Hard Problem of Consciousness\' (HPOC) is not a direct structural relationship, but rather a conceptual analogy rooted in the relationship between physical reality and phenomenal experience.\n\nHere is a detailed breakdown:\n\n### 1. The Higgs Boson (Physical Mechanism)\n\nThe Higgs boson is the quantum field excitation that gives mass to other particles. It is the field that dictates the fundamental properties of matter. In physics, it is a specific, measurable manifestation of the underlying structure of reality.\n\n### 2. The Hard Problem of Consciousness (HPOC) (Phenomenal Experience)\n\nThe HPOC, as defined by David Chalmers, is the problem of explaining *why* and *how* physical processes give rise to subjective, phenomenal experience (e.g., "What makes the world *feel* like something?"). This is the gap between the'
+Gemma: The relationship between the structure of the Higgs boson and the 'Hard Problem of Consciousness' (HPOC) is not a direct structural relationship, but rather a conceptual analogy rooted in the relationship between physical reality and phenomenal experience.
+
+Here is a detailed breakdown:
+
+### 1. The Higgs Boson (Physical Mechanism)
+
+The Higgs boson is the quantum field excitation that gives mass to other particles. It is the field that dictates the fundamental properties of matter. In physics, it is a specific, measurable manifestation of the underlying structure of reality.
+
+### 2. The Hard Problem of Consciousness (HPOC) (Phenomenal Experience)
+
+The HPOC, as defined by David Chalmers, is the problem of explaining *why* and *how* physical processes give rise to subjective, phenomenal experience (e.g., "What makes the world *feel* like something?"). This is the gap between the
+
+You: 
+[+] Step 1 complete in 45.29s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 2] Sending: Compare the fall of the Western Roman Empire to the modern 'Alignment Problem' i...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Performance Optimization: Using Local LLM for context resolution.
+[*] Reasoning Gateway: Complex query detected. Escalating to DEEP mode.
+Gemma is thinking (DEEP mode)...
+[DEBUG RAW OUTPUT]: 'The comparison between the fall of the Western Roman Empire and the modern "Alignment Problem" in AI safety reveals a conceptual parallel between systemic failure driven by loss of control and existential risk arising from unintended consequences.\n\nThe comparison hinges on viewing both entities as critical case studies in **Systemic Collapse** and **Loss of Governance**.\n\n### 1. Loss of Governance and Systemic Collapse\n\n**The Fall of the Western Roman Empire:** This represents a historical case study of systemic failure. The collapse involved the failure of governance mechanisms—loss of infrastructure, breakdown of military defense, corruption, and the inability to maintain the complex legal and administrative structures necessary for a large empire. The collapse was characterized by the *loss of control* over vast territories, the inability to manage logistical chains, and'
+Gemma: The comparison between the fall of the Western Roman Empire and the modern "Alignment Problem" in AI safety reveals a conceptual parallel between systemic failure driven by loss of control and existential risk arising from unintended consequences.
+
+The comparison hinges on viewing both entities as critical case studies in **Systemic Collapse** and **Loss of Governance**.
+
+### 1. Loss of Governance and Systemic Collapse
+
+**The Fall of the Western Roman Empire:** This represents a historical case study of systemic failure. The collapse involved the failure of governance mechanisms—loss of infrastructure, breakdown of military defense, corruption, and the inability to maintain the complex legal and administrative structures necessary for a large empire. The collapse was characterized by the *loss of control* over vast territories, the inability to manage logistical chains, and
+
+You: 
+[+] Step 2 complete in 37.45s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 3] Sending: If Kant applied his Categorical Imperative to the Silk Road trade, how would it ...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Performance Optimization: Using Local LLM for context resolution.
+[*] Analyzing dynamic context for: If Kant applied his Categorical Imperative to the Silk Road trade, how would it have changed 13th-century economics?...
+Gemma is thinking (FAST mode)...
+[!] Strict Output Guard: Empty response detected. Triggering recovery...
+[!] Final Stand: LLM unresponsive. Falling back to Knowledge Graph...
+[DEBUG RAW OUTPUT]: "I am experiencing high latency with my reasoning engine. Based on my internal knowledge graph, I know the following: 5 has query summary summarize how the great depression's impact on political sta, 1 has query summary how does the structure of the higgs boson relate to the 'har, 3 has query summary if kant applied his categorical imperative to the silk road. How else can I help?"
+Gemma: I am experiencing high latency with my reasoning engine. Based on my internal knowledge graph, I know the following: 5 has query summary summarize how the great depression's impact on political sta, 1 has query summary how does the structure of the higgs boson relate to the 'har, 3 has query summary if kant applied his categorical imperative to the silk road. How else can I help?
+
+You: 
+[+] Step 3 complete in 32.67s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 4] Sending: Describe a logical relationship between Gödel's Incompleteness Theorems and the ...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Reasoning Gateway: Complex query detected. Escalating to DEEP mode.
+Gemma is thinking (DEEP mode)...
+[DEBUG RAW OUTPUT]: "The relationship between Gödel's Incompleteness Theorems and the architecture of a SpaceX Starship is fundamentally one of **formal system limitations** and **provability constraints**.\n\nThe relationship is established through the lens of mathematical logic and formal verification, viewing the Starship architecture not merely as a physical structure, but as a formal system capable of being described, modeled, and verified.\n\n### The Logical Relationship\n\n1.  **Gödel's Theorem as a Constraint on Formal Systems:** Gödel's Incompleteness Theorems demonstrate that any sufficiently powerful, consistent system (like the mathematical logic used to define complex system safety protocols) cannot prove its own consistency. This establishes an inherent ceiling on what a formal system can achieve in terms of self-verification.\n\n2.  "
+Gemma: The relationship between Gödel's Incompleteness Theorems and the architecture of a SpaceX Starship is fundamentally one of **formal system limitations** and **provability constraints**.
+
+The relationship is established through the lens of mathematical logic and formal verification, viewing the Starship architecture not merely as a physical structure, but as a formal system capable of being described, modeled, and verified.
+
+### The Logical Relationship
+
+1.  **Gödel's Theorem as a Constraint on Formal Systems:** Gödel's Incompleteness Theorems demonstrate that any sufficiently powerful, consistent system (like the mathematical logic used to define complex system safety protocols) cannot prove its own consistency. This establishes an inherent ceiling on what a formal system can achieve in terms of self-verification.
+
+2.  
+
+You: 
+[+] Step 4 complete in 33.94s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 5] Sending: Summarize how the Great Depression's impact on political stability compares to t...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Performance Optimization: Using Local LLM for context resolution.
+[*] Analyzing dynamic context for: Summarize how the Great Depression's impact on political stability compares to the ethics of autonomous weapon systems today....
+[*] Reasoning Gateway: Complex query detected. Escalating to DEEP mode.
+Gemma is thinking (DEEP mode)...
+[DEBUG RAW OUTPUT]: 'The comparison between the impact of the Great Depression on political stability and the ethics of autonomous weapon systems (AWS) hinges on the concept of **systemic fragility** and the **scale of consequential decision-making**. Both'
+Gemma: The comparison between the impact of the Great Depression on political stability and the ethics of autonomous weapon systems (AWS) hinges on the concept of **systemic fragility** and the **scale of consequential decision-making**. Both
+
+You: 
+[+] Step 5 complete in 44.55s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 6] Sending: Write a Python function to calculate the GCD of two numbers using the Euclidean ...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Performance Optimization: Using Local LLM for context resolution.
+Gemma is thinking (FAST mode)...
+[*] Selective Gating: Escalating code task from FAST to DEEP mode budgets.
+[DEBUG RAW OUTPUT]: "[FILE: gcd.py]\ndef gcd(a, b):\n    while b != 0:\n        a, b = b, a % b\n        a, b = b, a % b\n    return a\n\nif __name__ == '__main__':\n    print(gcd(48, 12))"
+[+] Autonomous Testing: All tests PASSED.
+Gemma: [FILE: gcd.py]
+def gcd(a, b):
+    while b != 0:
+        a, b = b, a % b
+    return a
+
+if __name__ == '__main__':
+    print(gcd(48, 12))
+
+You: 
+[+] Step 6 complete in 29.11s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 7] Sending: Write a script that calculates the Fibonacci sequence up to its 10th term using ...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Performance Optimization: Using Local LLM for context resolution.
+Gemma is thinking (FAST mode)...
+[*] Selective Gating: Escalating code task from FAST to DEEP mode budgets.
+[DEBUG RAW OUTPUT]: '[FILE: fib.py]\ndef fibonacci_generator(max_n):\n    a, b = 0, 1\n    while True:\n        yield a\n        a, b = b, a + b\n\ndef calculate_fib_sequence(limit):\n    for i in range(limit):\n        yield next(fibonacci_generator(limit))\n\nif __name__ == "__main__":\n    print("Fibonacci sequence up to the 10th term:")\n    for number in calculate_fib_sequence(10):\n        print(number)'
+[+] Autonomous Testing: All tests PASSED.
+Gemma: [FILE: fib.py]
+def fibonacci_generator(n):
+    """Generates the Fibonacci sequence up to the nth term."""
+    a, b = 0, 1
+    for i in range(n):
+        yield a
+        a, b = b, a + b
+
+if __name__ == '__main__':
+    import sys
+    try:
+        n = 10
+        print(f"Generating Fibonacci sequence up to the {n}th term:")
+        for number in fibonacci_generator(n):
+            print(number)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+You: 
+[+] Step 7 complete in 54.45s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 8] Sending: Create a script that filters a list of fruits for only those with more than 5 le...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Performance Optimization: Using Local LLM for context resolution.
+Gemma is thinking (FAST mode)...
+[*] Selective Gating: Escalating code task from FAST to DEEP mode budgets.
+[DEBUG RAW OUTPUT]: '[FILE: filter.py]\ndef filter_fruits(fruit_list):\n    filtered = [fruit for fruit in fruit_list if len(fruit) > 5]\n    return filtered\n\nif __name__ == \'__main__\':\n    fruit_data = ["apple", "banana", "kiwi", "strawberry", "grape"]\n    print(filter_fruits(fruit_data))'
+[+] Autonomous Testing: All tests PASSED.
+Gemma: [FILE: filter.py]
+def filter_fruit_length(fruit_list):
+    return [fruit for fruit in fruit_list if len(fruit) > 5]
+
+if __name__ == '__main__':
+    sample_fruits = ["apple", "banana", "kiwi", "pineapple", "strawberry"]
+    filtered = filter_fruit_length(sample_fruits)
+    print(filtered)
+
+You: 
+[+] Step 8 complete in 41.49s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 9] Sending: Implement a basic Bubble Sort algorithm in Python for a list of numbers. [FILE: ...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Performance Optimization: Using Local LLM for context resolution.
+Gemma is thinking (FAST mode)...
+[*] Selective Gating: Escalating code task from FAST to DEEP mode budgets.
+[DEBUG RAW OUTPUT]: "[FILE: sort.py]\ndef bubble_sort(arr):\n    n = len(arr))\n    for i in range(n):\n        for j in range(n - i - 1):\n            if arr[j] > arr[j + 1]:\n                arr[j], arr[j + 1] = arr[j + 1], arr[j]\n    return arr\n\nif __name__ == '__main__':\n    numbers = [64, 34, 25, 10, 22, 54, 21, 23]\n    print(bubble_sort(numbers))"
+[+] Autonomous Testing: All tests PASSED.
+Gemma: [FILE: sort.py]
+def bubble_sort(data):
+    n = len(data))
+    for i in range(n):
+        for j in range(n - i - 1):
+            if data[j] > data[j + 1]:
+                data[j], data[j + 1] = data[j + 1], data[j]
+    return data
+
+if __name__ == '__main__':
+    numbers = [34, 12, 2, 5, 8]
+    print(bubble_sort(numbers))
+
+You: 
+[+] Step 9 complete in 20.77s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 10] Sending: Write a Python script to convert 100 degrees Fahrenheit to Celsius. [FILE: conve...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+Gemma is thinking (FAST mode)...
+[*] Selective Gating: Escalating code task from FAST to DEEP mode budgets.
+[DEBUG RAW OUTPUT]: '[FILE: convert.py]\ndef convert_f_to_c(fahrenheit):\n    return (fahrenheit - 32) / 1.8\n\nif __name__ == "__main__":\n    temp_f = 100\n    temp_c = convert_f_to_c(temp_f)\n    print(f"{temp_f} degrees Fahrenheit is {temp_c} degrees Celsius.")'
+[+] Autonomous Testing: All tests PASSED.
+Gemma: [FILE: convert.py]
+def convert_f_to_c(fahrenheit):
+    return (fahrenheit - 32) / 1.8
+
+if __name__ == "__main__":
+    temp_f = 100
+    temp_c = convert_f_to_c(temp_f)
+    print(f"{temp_f} degrees Fahrenheit is {temp_c} degrees Celsius.")
+
+You: 
+[+] Step 10 complete in 38.8s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 11] Sending: Design and implement a complete Project: 'Planet Explorer'. This should be a mul...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+Gemma is thinking (FAST mode)...
+[*] Selective Gating: Escalating code task from FAST to DEEP mode budgets.
+[DEBUG RAW OUTPUT]: '[FILE: PLAN.md]\n# Planet Explorer project plan\nThis plan outlines the structure for a multi-file application, including a main entry point, a data module for JSON persistence, and a generator module for procedural planet names.'
+[*] Project Mode Detected: Entering planning phase...
+[*] Project Planning: Researching architecture...
+[*] Project Planning: Generating PLAN.md...
+[*] Autonomous Coding: Saved validated PLAN.md
+[!] Validation FAILED for main.py: ModuleNotFoundError: Hallucinated import 'data_manager'
+[*] Autonomous Coding: Saved validated data_manager.py
+[!] Validation FAILED for name_generator.py: Syntax Error: unterminated string literal (detected at line 9) (line 9)
+[*] Project Planning: Plan saved to sandbox/project_design_and_implement_1776852059/PLAN.md (validated write)
+[*] Project Routing: Selecting best persona for implementation...
+[*] Project Routing: LLM suggested ''
+[+] Project Routing: Selected 'code_architect' (agents) persona.
+[*] Autonomous Coding: Transitioning to implementation with persona...
+[*] Autonomous Coding: Saved validated main.py
+[*] Autonomous Coding: Saved validated data_manager.py
+[*] Autonomous Audit: Manifest requires 4 files.
+[!] Autonomous Audit: Failure in name_generator.py. Surgical Repair (1/5)...
+[!] Autonomous Audit: Failure in name_generator.py. Surgical Repair (2/5)...
+Gemma: [Error during generation: Error code: 400 - {'error': {'code': 400, 'message': 'request (2090 tokens) exceeds the available context size (2048 tokens), try increasing it', 'type': 'exceed_context_size_error', 'n_prompt_tokens': 2090, 'n_ctx': 2048}}]
+
+You: 
+[*] Execution Verification: Running main.py...
+[*] Execution Result: EXEC FAIL (Traceback (most recent call last):
+  Fil...)
+[*] Project Dir Check: ✅ Created (project_design_and_implement_1776852059)
+[*] Project Plan Check: ✅ PLAN.md found
+
+[+] Step 11 complete in 182.17s | Cache: False | Code: EXEC FAIL (Traceback (most recent call last):
+  Fil...) | Syntax: True | Project: True | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus Cell\sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+[*] Agent initialized with 4 persona shards cached.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 12] Sending: Let's discuss the history of cryptography. Start with the Caesar cipher....
+Gemma: [FILE: cryptography_history.md]
+The history of cryptography is a fascinating field, tracing the evolution of secure communication from ancient methods to modern computational security. We will begin with the foundational concept: the Caesar cipher.
+
+### The Caesar Cipher: A Historical Foundation
+
+The Caesar cipher is one of the earliest and simplest forms of encryption, relying on a fixed shift in the alphabet. It is a substitution cipher where each letter in the plaintext is replaced by its successor in the alphabet, usually by a fixed number of positions (the "key").
+
+**Historical Context:**
+The cipher is named after the Roman general Julius Caesar, who is famously associated with the development of this method. While the method itself is simple, its historical significance lies in demonstrating the concept of systematic substitution for secrecy.
+
+**Mechanism:**
+The cipher operates by mapping letters to letters based on a predetermined shift. For example, in a shift of three, 'A' becomes 'D', 'B' becomes 'E', and so on. This requires the cryptanalyst to know the shift value to decode the message.
+
+**Significance:**
+The Caesar cipher is significant not for its cryptographic strength (it is trivially broken), but for its historical significance as the first widely recognized example of a substitution cipher. It established the foundational concept that information can be obscured through systematic transformation.
+
+### Transition to Modern Cryptography
+
+To move beyond this foundational historical example, we must transition to more complex cryptographic methods. The next logical step involves exploring methods that offer greater security, such as polyalphabetic substitution ciphers (like the Vigenère cipher) or the transition into modern, asymmetric cryptography (like RSA or Diffie-Hellman).
+
+---
+
+[FACT] cryptography | relates | Caesar cipher
+[FACT] history | relates | cryptography
+[FACT] historical_context | relates | Caesar cipher
+[Semantic Cache Hit]
+
+You: 
+[STRESS STEP 12] Sending: Now explain the Vigenère cipher in detail. Give a long description....
+Gemma: [FILE: cryptography_history.md]
+## The Vigenère Cipher: An Advanced Substitution Method
+
+The Vigenère cipher represents a significant evolution from the simplistic Caesar cipher. While the Caesar cipher relied on a single, fixed shift, the Vigenère cipher introduces a variable shift based on a repeating keyword, making the encryption process significantly more complex and resistant to simple frequency analysis.
+
+### Detailed Explanation of the Vigenère Cipher
+
+The Vigenère cipher is a polyalphabetic substitution cipher, meaning that instead of a single letter being consistently replaced by another (as in the Caesar cipher), the shift applied to the plaintext letter depends on the corresponding letter in a repeating keyword.
+
+**Mechanism and Operation:**
+
+1.  **Key Selection:** The encryption process requires a secret keyword (or key string) of equal or greater length than the message to be encrypted. This keyword is converted into a numerical key (A=0, B=1, ..., Z=25).
+2.  **Substitution:** The plaintext is encrypted by adding the numerical value of the corresponding letter in the keyword to the numerical value of the plaintext letter.
+    *   Example: If the plaintext letter is 'A' (value 0) and the corresponding keyword letter is 'C' (value 2), the resulting ciphertext letter will be 'D' (0 + 2 = 2).
+3.  **Repetition:** The keyword is repeated to cover the entire length of the message. This repetition ensures that the same letters in the message are shifted by the same amount, but the shift amount changes based on the position in the keyword.
+
+**Cryptographic Significance:**
+
+The Vigenère cipher’s primary advantage over the Caesar cipher is the introduction of **diffusion** and **complexity**.
+
+*   **Increased Security:** Because the shift value changes based on the keyword, an attacker cannot rely on a single, fixed shift value. This makes frequency analysis significantly harder, as the statistical distribution of letters in the ciphertext is no longer uniform across the alphabet; it is dependent on the keyword's pattern.
+*   **Vulnerability:** However, the cipher is fundamentally weak against a determined cryptanalyst. If the keyword is short or repeated in a predictable manner, the cipher can be broken relatively quickly by applying the Kasiski test to identify repeated sequences of letters, which reveals the length of the keyword.
+
+**Historical Context:**
+
+The Vigenère cipher was developed in the 19th century, primarily as a method to enhance the security of diplomatic and military communications. It demonstrated that cryptographic methods could be made more sophisticated than simple shift ciphers, moving the field of cryptography from rudimentary substitution to a more sophisticated system of polyalphabetic substitution. It established the principle that the key itself is the crucial element in the cryptographic system, rather than just the shift value.
+
+In summary, the Vigenère cipher is a foundational step in cryptographic history, demonstrating the transition from simple substitution to a more complex, keyword-dependent system, which laid the groundwork for understanding the complexity of modern polyalphabetic ciphers.
+
+[FACT] cryptography relates caesar cipher | historical_context relates caesar cipher | higgs boson relates to hard problem of consciousness | bubble_sort relates list processing | bubble_sort relates array manipulation | fahrenheit_to_celsius relates conversion | the categorical imperative test consistency | economic analysis duty-based shift | failure mechanism relates systemic failure | bubble_s...
+[Semantic Cache Hit]
+
+You: 
+[STRESS STEP 12] Sending: Add a 3000 character essay about the impact of Enigma on WWII to the context....
+Gemma: [FILE: essay.txt]
+
+The Enigma machine, far from being a mere mechanical device, became a profound symbol of the operational and strategic challenges faced by Allied forces during the Second World War. Its impact was not simply the encryption of messages, but the fundamental reshaping of intelligence gathering, operational security, and the very nature of warfare itself. The Enigma’s influence extended beyond the simple act of encoding; it became the crucible in which intelligence was forged, the battlefield where strategic foresight was tested, and the mechanism through which the psychological and operational resilience of nations was revealed.
+
+The primary impact of Enigma lay in the intensification of cryptographic warfare. As the operational tempo of WWII accelerated, the need for secure communication became paramount. Enigma introduced a level of complexity that demanded sophisticated decryption efforts, transforming the process of intelligence gathering from a passive reception of information into an active, high-stakes endeavor. The ability to decipher these complex, shifting patterns—the substitution of letters, the interlocking nature of the cipher—was a direct measure of a nation’s operational capacity. Success in breaking Enigma signaled not just the recovery of a specific message, but the validation of entire intelligence networks, revealing the hidden operational capabilities and strategic intent of adversaries. This process underscored the critical relationship between cryptography and intelligence analysis, proving that the ability to read the code was inseparable from the ability to win the war.
+
+Furthermore, the impact of Enigma was deeply psychological. The constant, high-stakes pressure of cryptographic decryption created an environment where operational security was paramount. The fear of a successful decryption, or conversely, the failure to detect a sophisticated deception, shaped the decision-making processes of military commanders. This psychological dimension highlights how the mastery of Enigma was not just a technical feat, but a demonstration of intellectual superiority, fostering a sense of operational resilience against the chaos of the conflict. It was a crucible where the intellectual capacity of cryptanalysts was tested against the relentless, evolving complexity of the enemy’s attempts to conceal their operations.
+
+In essence, the Enigma machine’s impact was systemic. It redefined the operational landscape of WWII, moving the conflict from a state of brute force confrontation to a sophisticated intelligence war. It demonstrated that the future of conflict would not be defined solely by troop movements, but by the speed and accuracy of the deciphered message. The struggle against Enigma was a microcosm of the broader struggle against the forces of chaos, illustrating that intelligence, when successfully extracted, becomes the decisive factor in strategic decision-making. The legacy of Enigma is thus not just the history of encryption, but the history of intelligence warfare itself—a testament to the enduring truth that in modern conflict, the ability to understand the hidden structure of the enemy is the ultimate weapon.
+
+[FACT] cryptography | relates | Enigma machine
+[FACT] historical_context | relates | Enigma machine
+[FACT] operational_security | relates | Enigma machine
+[FACT] intelligence_warfare | relates | Enigma machine
+[Semantic Cache Hit]
+[*] Performing background persistence...
+
+You: 
+[STRESS STEP 12] Sending: Can you summarize our entire conversation so far? (This should trigger Spin-Down...
+[*] Proactive Context Guard: History (1985 tokens) near limit. Spinning down...
+[*] Context window full (8439 chars). Grounding session state...
+[!] Spin-down recovery: Primary summary failed, attempting emergency synthesis...
+[*] Agent Brain history purged for fresh context.
+[+] State grounded and saved to Brain. Summary: ...
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[*] Transitioning to Deep Lane for uncertainty resolution...
+[*] Performance Optimization: Using Local LLM for context resolution.
+Gemma is thinking (FAST mode)...
+[!] Strict Output Guard: Empty response detected. Triggering recovery...
+[DEBUG RAW OUTPUT]: 'I do not have a prior conversation to summarize.'
+Gemma: I do not have a prior conversation to summarize.
+
+You: 
+[+] Step 12 complete in 87.47s | Cache: True | Code: N/A | Syntax: N/A | Project: False | SpinDown: True | SpinUp: False
+
+--- Stress Test Complete ---
+
+======================================================================
+  ULTIMATE BENCHMARK SCORECARD v2.0
+======================================================================
+  Total Time           : 943.18s
+  Facts Extracted      : 8
+  Web Searches         : 0
+  Semantic Cache Hits  : 1
+  Code Execution Pass  : 0/1
+  Syntax Validation    : 1/1
+  Project Dirs Created : 1/1
+  Project Plans (MD)   : 1/1
+  Context Spin-Downs   : 1
+  Session Continuity   : 0
+  Brain Syncs          : 0
+======================================================================
+
+  Per-Step Summary:
+  Step     Time  Cache  Code       Syntax  Proj  SD  SU 
+  -----------------------------------------------------------------
+  1       45.3s  N      N/A        N/A     N     N   N  
+  2       37.5s  N      N/A        N/A     N     N   N  
+  3       32.7s  N      N/A        N/A     N     N   N  
+  4       33.9s  N      N/A        N/A     N     N   N  
+  5       44.5s  N      N/A        N/A     N     N   N  
+  6       29.1s  N      N/A        N/A     N     N   N  
+  7       54.5s  N      N/A        N/A     N     N   N  
+  8       41.5s  N      N/A        N/A     N     N   N  
+  9       20.8s  N      N/A        N/A     N     N   N  
+  10      38.8s  N      N/A        N/A     N     N   N  
+  11     182.2s  N      EXEC FAIL  PASS    Y     N   N  
+  12      87.5s  Y      N/A        N/A     N     Y   N  
+======================================================================
+
+--- Syncing benchmark results to Agent Brain ---
+[+] Sync complete. 12 step records in agent vectorized memory.
+
+--- Post-Benchmark BrainSync Verification ---
+[✅] Benchmark records are semantically searchable in agent memory (3 hits).

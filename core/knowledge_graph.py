@@ -18,6 +18,11 @@ class KnowledgeGraph:
             obj = obj.strip().lower()
             relation = relation.strip().lower()
             
+            # Check for existing triplet to prevent context bloating
+            if self.graph.has_edge(subject, obj):
+                if self.graph.edges[subject, obj].get('relation') == relation:
+                    return # Exact duplicate found
+
             # Create a directional edge for the neurosymbolic link
             self.graph.add_edge(subject, obj, relation=relation)
             self.save()

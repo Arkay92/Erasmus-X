@@ -1,4 +1,5 @@
 import torch
+import re
 import torchhd
 from torchhd import embeddings
 import os
@@ -86,17 +87,20 @@ class HypervectorDB:
             else:
                 self.cache_tensor = torch.cat([self.cache_tensor, hv.unsqueeze(0)])
 
-    def search_cache(self, query, threshold=0.98):
-        """Checks the cache for a highly similar query."""
+    def search_cache(self, query, threshold=0.65):
+        """Checks the cache for a highly similar query with aggressive normalization."""
         if not self.prompt_cache or self.cache_tensor is None:
             return None
             
-        query_hv = self.encode(query)
+        # Aggressive Normalization: lowercase, strip punct, collapse space
+        norm_query = re.sub(r'[^\w\s]', '', query).lower().strip()
+        norm_query = re.sub(r'\s+', ' ', norm_query)
+
+        query_hv = self.encode(norm_query)
         similarities = torchhd.functional.cosine_similarity(query_hv, self.cache_tensor)
         
         score, idx = torch.max(similarities, dim=0)
         if score.item() >= threshold:
-            # Match found! Map back to the query string to get the data
             cached_queries = list(self.prompt_cache.keys())
             matched_query = cached_queries[idx.item()]
             return self.prompt_cache[matched_query]
@@ -124,8 +128,12 @@ class HypervectorDB:
         project_seeds = ["design and implement", "multi-file application", "system architecture", "build a complete project", "create an app", "software system with sqlite", "complex application generator", "create a project"]
         project_v = torch.stack([self.encode(p) for p in project_seeds])
         project_centroid = torchhd.functional.multiset(project_v)
+        # 5. Summary Intent (Conversation History/Synthesis)
+        summary_seeds = ["summarize our history", "synthesize this session", "what have we talked about", "recap our progress", "give me a summary", "what was our discussion", "history recapitulation"]
+        summary_v = torch.stack([self.encode(s) for s in summary_seeds])
+        summary_centroid = torchhd.functional.multiset(summary_v)
         
-        self.intent_centers = torch.stack([search_centroid, recall_centroid, tool_centroid, project_centroid])
+        self.intent_centers = torch.stack([search_centroid, recall_centroid, tool_centroid, project_centroid, summary_centroid])
         self.save()
 
     def classify_intent(self, query):
@@ -141,7 +149,7 @@ class HypervectorDB:
         sims = torchhd.functional.cosine_similarity(q_v, self.intent_centers)
         
         score, idx = torch.max(sims, dim=0)
-        labels = ["SEARCH", "RECALL", "TOOL", "PROJECT"]
+        labels = ["SEARCH", "RECALL", "TOOL", "PROJECT", "SUMMARY"]
         label = labels[idx.item()]
         return label, score.item()
 
@@ -206,6 +214,14 @@ class HypervectorDB:
                 if len(results) >= top_k:
                     break
         return results
+
+    def get_latest_session_state(self):
+        """Deterministic retrieval of the last [SESSION_STATE] summary."""
+        # Search backwards through the documents list for the marker
+        for doc in reversed(self.documents):
+            if "[SESSION_STATE]" in doc:
+                return doc
+        return None
 
     def save(self):
         # Create directory if it doesn't exist
