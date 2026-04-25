@@ -3,6 +3,7 @@ from core import config
 from core.vector_store import HypervectorDB
 from core.knowledge_graph import KnowledgeGraph
 from core.agent import NeurosymbolicAgent
+from openai import OpenAI
 from utils.web_search import WebSearcher
 from utils.visualize_graph import generate_visual_graph
 
@@ -14,9 +15,11 @@ def main():
     brain = HypervectorDB(filename=config.BRAIN_STORAGE_PATH, dim=config.HV_DIMENSIONS)
     kg = KnowledgeGraph(storage=brain)
     searcher = WebSearcher()
+    # Initialize OpenAI Client
+    client = OpenAI(api_key=config.API_KEY, base_url=config.API_BASE_URL)
     
     # Initialize the Agent Engine (DIP - Dependency Inversion)
-    agent = NeurosymbolicAgent(brain=brain, kg=kg, searcher=searcher)
+    agent = NeurosymbolicAgent(client=client, brain=brain, kg=kg, searcher=searcher)
 
     print("\nConnected successfully! Agent Brain is online.")
     print("Neurosymbolic System Active! Ready for chat.")

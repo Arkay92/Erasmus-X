@@ -1,0 +1,31 @@
+--- Starting ULTIMATE Neurosymbolic Stress Test ---
+[*] Logging verbatim output to: test/logs/benchmark_1776948061.log
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 1] Sending: create a next js project with frontend, backend, db, login and register and a da...
+Gemma is thinking (DEEP mode)...
+[*] Project Phase: Planning & Manifesting...
+[*] V12 Phase: Generating Capability Contract...
+[+] Contract derived: gemini-auth-dashboard
+[*] Project Planning Complete: v12_create_a_next_js_pro_1776948197
+[*] Manifest Audit: 4 valid files identified.
+    Target List: app/layout.tsx, app/dashboard/page.tsx, components/LoginForm.tsx, components/Dashboard.tsx...
+[*] V12 Build Stage: FOUNDATION (4 targets identified)
+[*] V12 Progress: 0/4 nodes linked | 2 errors
+[*] Build Attempt 1/13: 4 missing, 2 invalid.
+[*] V12 Progress: 0/4 nodes linked | 2 errors
+[*] Build Attempt 2/13: 4 missing, 2 invalid.
+[!] Authoritative Logic Injection (Failure): Forcing deep implementation for app/layout.tsx
+[+] Dependency Induction: Added 1 missing targets (globals.css.ts)
+[*] V12 Progress: 0/5 nodes linked | 1 errors
+[*] Build Attempt 3/13: 4 missing, 1 invalid.
+[

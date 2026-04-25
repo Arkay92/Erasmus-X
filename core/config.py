@@ -7,9 +7,6 @@ MODEL_NAME = "local-model"
 
 # Storage Configuration
 BRAIN_STORAGE_PATH = "memories/agent_brain.pt"
-LEGACY_JSON_MEMORY = "memories/hypervector_memory.json"
-LEGACY_PT_MEMORY = "memories/hypervector_memory.pt"
-LEGACY_KG_JSON = "memories/knowledge_graph.json"
 
 # Hypervector Configuration
 HV_DIMENSIONS = 10000
@@ -30,6 +27,7 @@ CACHE_THRESHOLD = 0.65
 
 # Prompt Compression (McMenemy Strategy)
 ENABLE_PROMPT_COMPRESSION = True
+COMPRESSION_ENABLED = True
 COMPRESSION_DEBUG = True  # Set to True to see char savings in console
 
 # Phase 5 & 6: Resource Optimization & Sandbox
@@ -62,4 +60,18 @@ DEEP_MODE_CONTEXT_TOKENS = 2048
 DEEP_MODE_OUTPUT_TOKENS = 512
 
 # Phase 9: Iterative Repair Guard
-MAX_REPAIR_HISTORY_TOKENS = 1800 
+MAX_REPAIR_HISTORY_TOKENS = 600
+CRITIC_REPORT_LIMIT = 500
+
+# Phase 10: Autonomous Capability Synthesis
+ENABLE_AUTONOMOUS_SYNTHESIS = True
+SYNTHESIS_THRESHOLD = 0.8
+ASSOCIATION_RECALL_THRESHOLD = 0.35
+MAX_PROJECT_RETRIES = 8
+MAX_CRITIC_CYCLES = 3
+
+# Phase 11: Chain of Thought & Reinforcement Learning
+ENABLE_REASONING_ENGINE = True
+REASONING_LESSONS_STORAGE = "core/memory/reasoning_lessons.json"
+MAX_REASONING_LESSONS_CONTEXT = 3
+REASONING_EVALUATION_THRESHOLD = 80

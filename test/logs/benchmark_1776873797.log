@@ -1,0 +1,55 @@
+--- Starting ULTIMATE Neurosymbolic Stress Test ---
+[*] Logging verbatim output to: test/logs/benchmark_1776873797.log
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 1] Sending: create a next js project with frontend, backend, db, login and register and a da...
+Gemma is thinking (DEEP mode)...
+[*] Project Phase: Planning & Manifesting...
+[*] Project Planning Complete: v10_create_a_next_js_pro_1776873968
+[*] Manifest Audit: 3 valid files identified.
+    Target List: app/layout.tsx, app/dashboard/page.tsx, components/LoginForm.tsx...
+Gemma: [Error: no such group]
+
+You: [*] Project Dir Check: ✅ Created (v10_create_a_next_js_pro_1776873968)
+[*] Project Plan Check: ✅ PLAN.md found
+
+[+] Step 1 complete in 150.72s | Cache: False | Code: N/A | Syntax: N/A | Project: True | SpinDown: False | SpinUp: False
+
+--- Stress Test Complete ---
+
+======================================================================
+  ULTIMATE BENCHMARK SCORECARD v2.0
+======================================================================
+  Total Time           : 172.1s
+  Facts Extracted      : 0
+  Web Searches         : 0
+  Semantic Cache Hits  : 0
+  Code Execution Pass  : 0/0
+  Syntax Validation    : 0/0
+  Project Dirs Created : 1/1
+  Project Plans (MD)   : 1/1
+  Context Spin-Downs   : 0
+  Session Continuity   : 0
+  Brain Syncs          : 0
+======================================================================
+
+  Per-Step Summary:
+  Step     Time  Cache  Code       Syntax  Proj  SD  SU 
+  -----------------------------------------------------------------
+  1      150.7s  N      N/A        N/A     Y     N   N  
+======================================================================
+
+--- Syncing benchmark results to Agent Brain ---
+[+] Sync complete. 1 step records in agent vectorized memory.
+
+--- Post-Benchmark BrainSync Verification ---
+[✅] Benchmark records are semantically searchable in agent memory (3 hits).

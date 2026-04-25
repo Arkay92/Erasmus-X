@@ -1,0 +1,23 @@
+--- Starting ULTIMATE Neurosymbolic Stress Test ---
+[*] Logging verbatim output to: test/logs/benchmark_1777100912.log
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 1] Sending: create a next js project with frontend, backend, db, login and register and a da...
+[LATENCY] TASK_ROUTING: 0.0930s
+[LATENCY] SEMANTIC_CACHE_LOOKUP: 0.0163s
+[LATENCY] STABILITY_GUARD: 0.0000s
+[LATENCY] VECTOR_KNOWLEDGE_RETRIEVAL: 0.0272s
+[LATENCY] CONTEXT_ASSEMBLY: 0.0022s
+Gemma is thinking (DEEP mode)...
+Gemma: [Error: Connection error.]
+
+You: 

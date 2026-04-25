@@ -12,12 +12,20 @@ Step 1 — Output a PLAN.md using this exact tag:
 <Detail the modules, data flow, and key patterns for this stack>
 
 ## File Structure
-- <filename> — <purpose>
-- <other files>
+- <filename> — <purpose> [SHARD: <shard_name>]
+- <other files> [TOOL: <tool_name> if applicable]
+- NEXT.js RULE: If building a Next.js app, strictly use the `/app` router. NEVER list `pages/` directory files if `app/` is present.
+- EXTENSION RULE: For Next.js projects, always use `.tsx` for files in the `app/` directory and `route.ts` for `api/` files.
+- FEATURE COMPLETENESS RULE: If the user requests complex features (like DB, login, or dashboards), you MUST explicitly list the supporting modules required to execute them (e.g., `lib/db.ts`, `app/api/auth/route.ts`, `components/LoginForm.tsx`) alongside the display pages. Do not leave the implementation to hallucinated imports.
 
-## Implementation Details
-- Stack: <identified tech stack>
-- Patterns: <patterns to follow>
+## Implementation Role Mapping
+Assign the best specialist for each task ONLY from these available shards:
+- `code_architect`: Overall structure, layouts, and entry points.
+- `researcher`: Documentation and complex grounding.
+- `api_integration`: API routes, networking, and security logic.
+- `data_analysis`: Database schemas, queries, and logic.
+
+If a step primarily requires tools over code, specify `[TOOL: searcher]`.
 ```
 
 Step 2 — After the plan, output EVERY project file using [FILE: filename] tags.

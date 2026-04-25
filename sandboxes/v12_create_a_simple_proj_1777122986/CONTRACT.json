@@ -1,0 +1,37 @@
+{
+  "stack": "nextjs-app-router | prisma | typescript",
+  "project_name": "Todo List Application",
+  "features": [
+    "todo list management",
+    "state persistence",
+    "local storage synchronization"
+  ],
+  "critical_files": [
+    "app/layout.tsx",
+    "app/page.tsx",
+    "lib/db.ts",
+    "components/TodoItem.tsx"
+  ],
+  "forbidden_shortcuts": [
+    "// TODO",
+    "placeholder = true",
+    "return null",
+    "faked logic",
+    "react-router-dom in nextjs"
+  ],
+  "semantic_assertions": [
+    {
+      "file": "app/layout.tsx",
+      "assertion": "MUST use 'use client' for client components and MUST use 'next/navigation' for navigation hooks."
+    },
+    {
+      "file": "lib/db.ts",
+      "assertion": "MUST implement database interaction using a Prisma client instance and MUST handle all data operations within async/await."
+    }
+  ],
+  "logic_tests": [
+    "Verify that the main component fetches and updates the todo list state upon initial load.",
+    "Verify that the application handles adding a new todo item, persisting the data via the database layer.",
+    "Verify that component rendering correctly handles the list of tasks, ensuring no placeholder components are used."
+  ]
+}

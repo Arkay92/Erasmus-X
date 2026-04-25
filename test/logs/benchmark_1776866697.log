@@ -1,0 +1,68 @@
+--- Starting ULTIMATE Neurosymbolic Stress Test ---
+[*] Logging verbatim output to: test/logs/benchmark_1776866697.log
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 1] Sending: create a next js project with frontend, backend, db, login and register and a da...
+Gemma is thinking (DEEP mode)...
+[*] Project Phase: Planning & Manifesting...
+[*] Project Planning Complete: v10_create_a_next_js_pro_1776866826
+[*] Manifest Audit: 5 valid files identified.
+    Target List: app/layout.tsx, app/dashboard/page.tsx, app/login/[id]/page.tsx, components/UserCard.tsx, app/dashboard/[id]/page.tsx...
+[*] Build Attempt 1/10: 5 missing, 3 invalid.
+[*] Build Attempt 2/10: 5 missing, 3 invalid.
+[!] Authoritative Scaffolding: Forcing deterministic write for app/layout.tsx
+[*] Build Attempt 3/10: 4 missing, 2 invalid.
+[*] Build Attempt 4/10: 4 missing, 2 invalid.
+[!] Authoritative Scaffolding: Forcing deterministic write for app/dashboard/page.tsx
+[*] Build Attempt 5/10: 3 missing, 2 invalid.
+[*] Build Attempt 6/10: 3 missing, 3 invalid.
+[!] Authoritative Scaffolding: Forcing deterministic write for app/login/[id]/page.tsx
+[*] Build Attempt 7/10: 2 missing, 2 invalid.
+[*] Build Attempt 8/10: 2 missing, 2 invalid.
+[*] Build Attempt 9/10: 2 missing, 2 invalid.
+[*] Build Attempt 10/10: 2 missing, 3 invalid.
+Gemma: 
+
+You: [*] Project Dir Check: ✅ Created (v10_create_a_next_js_pro_1776866826)
+[*] Project Plan Check: ✅ PLAN.md found
+
+[+] Step 1 complete in 284.47s | Cache: False | Code: N/A | Syntax: N/A | Project: True | SpinDown: False | SpinUp: False
+
+--- Stress Test Complete ---
+
+======================================================================
+  ULTIMATE BENCHMARK SCORECARD v2.0
+======================================================================
+  Total Time           : 307.4s
+  Facts Extracted      : 0
+  Web Searches         : 0
+  Semantic Cache Hits  : 0
+  Code Execution Pass  : 0/0
+  Syntax Validation    : 0/0
+  Project Dirs Created : 1/1
+  Project Plans (MD)   : 1/1
+  Context Spin-Downs   : 0
+  Session Continuity   : 0
+  Brain Syncs          : 0
+======================================================================
+
+  Per-Step Summary:
+  Step     Time  Cache  Code       Syntax  Proj  SD  SU 
+  -----------------------------------------------------------------
+  1      284.5s  N      N/A        N/A     Y     N   N  
+======================================================================
+
+--- Syncing benchmark results to Agent Brain ---
+[+] Sync complete. 1 step records in agent vectorized memory.
+
+--- Post-Benchmark BrainSync Verification ---
+[✅] Benchmark records are semantically searchable in agent memory (3 hits).

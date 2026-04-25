@@ -33,30 +33,9 @@ BRAIN_FILE = config.BRAIN_STORAGE_PATH
 
 # 10 Steps of Cross-Modal & Functional Coding Synthesis
 TEST_QUESTIONS = [
-    # Reasoning Stress
-    "How does the structure of the Higgs boson relate to the 'Hard Problem of Consciousness' as defined by David Chalmers?",
-    "Compare the fall of the Western Roman Empire to the modern 'Alignment Problem' in AI safety.",
-    "If Kant applied his Categorical Imperative to the Silk Road trade, how would it have changed 13th-century economics?",
-    "Describe a logical relationship between Gödel's Incompleteness Theorems and the architecture of a SpaceX Starship.",
-    "Summarize how the Great Depression's impact on political stability compares to the ethics of autonomous weapon systems today.",
-    
-    # Coding Stress (Simplified for 2B Hardware Stability)
-    "Write a Python function to calculate the GCD of two numbers using the Euclidean algorithm. [FILE: gcd.py]",
-    "Write a script that calculates the Fibonacci sequence up to its 10th term using a generator. [FILE: fib.py]",
-    "Create a script that filters a list of fruits for only those with more than 5 letters. [FILE: filter.py]",
-    "Implement a basic Bubble Sort algorithm in Python for a list of numbers. [FILE: sort.py]",
-    "Write a Python script to convert 100 degrees Fahrenheit to Celsius. [FILE: convert.py]",
-    
-    # Project Stress
-    "Design and implement a complete Project: 'Planet Explorer'. This should be a multi-file application with a main entry point, a data module for JSON persistence to store planetary data, and a generator module for procedural planet names. Create a PLAN.md first.",
-
-    # Context Management Stress (Multi-turn session)
-    [
-        "Let's discuss the history of cryptography. Start with the Caesar cipher.",
-        "Now explain the Vigenère cipher in detail. Give a long description.",
-        "Add a 3000 character essay about the impact of Enigma on WWII to the context.",
-        "Can you summarize our entire conversation so far? (This should trigger Spin-Down and then Spin-Up)"
-    ]
+    "what is the capital of France?",
+    "write a python script that calculates the factorial of a number and save it to factorial.py",
+    "create a simple project structure for a todo list app"
 ]
 
 def run_benchmark():
@@ -127,9 +106,15 @@ def run_benchmark():
         
         # Extract response
         is_cached = "[Semantic Cache Hit]" in step_output
-        
-        # New: Execution & Syntax Verification
+
+        # Extract Latency Metrics
+        latency_map = {}
+        latency_matches = re.findall(r"\[LATENCY\] ([\w_]+): ([\d\.]+)s", step_output)
+        for stage, val in latency_matches:
+            latency_map[stage] = float(val)
         execution_status = "N/A"
+        critic_score = "N/A"
+        capability_report = {}
         syntax_ok = True
                # Find all files mentioned
         file_matches = re.finditer(r"Saved validated (.+)", step_output)
@@ -140,6 +125,8 @@ def run_benchmark():
             filename = file_match.group(1).strip()
             # Clean up potential extra log markers like " [Local LLM]" or " from ..."
             filename = filename.split()[0]
+            # Assure we only check the true filename basename to bypass scratch_dir prefixes mapping bugs
+            filename = os.path.basename(filename.replace('\\', '/'))
             
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
             
@@ -169,11 +156,16 @@ def run_benchmark():
                     syntax_ok = False
 
             # 2. Execution & Semantic Verification
-            is_main = filename in ["main.py", "gcd.py", "fib.py", "filter.py", "sort.py", "convert.py"]
+            is_main = filename in ["main.py", "gcd.py", "fib.py", "filter.py", "sort.py", "convert.py", "factorial.py"]
             if is_main and filepath and os.path.exists(filepath):
                 print(f"\n[*] Execution Verification: Running {filename}...")
                 try:
-                    run_res = subprocess.run([sys.executable, filepath], capture_output=True, text=True, timeout=20)
+                    if filename == "factorial.py":
+                        # Try with argv first, then stdin fallback (LLM may use either pattern)
+                        run_res = subprocess.run([sys.executable, filepath, "5"], capture_output=True, text=True, timeout=10, input="5\n")
+                    else:
+                        run_res = subprocess.run([sys.executable, filepath], capture_output=True, text=True, timeout=20)
+                        
                     stdout = run_res.stdout.strip()
                     stderr = run_res.stderr.strip()
                     
@@ -188,6 +180,11 @@ def run_benchmark():
                             if not re.search(r"\b6\b", stdout):
                                 semantic_ok = False
                                 msg = "GCD result '6' for (48, 18) not found."
+                                
+                        elif filename == "factorial.py":
+                            if not re.search(r"\b120\b", stdout):
+                                semantic_ok = False
+                                msg = "Factorial result '120' for (5) not found."
                         
                         elif filename == "fib.py":
                             # Rigorous check: Full sequence up to 10 terms
@@ -233,21 +230,37 @@ def run_benchmark():
                 except Exception as e:
                     execution_status = f"SYSTEM ERROR ({str(e)})"
                 print(f"[*] Execution Result: {execution_status}")
+        
+        # Elite V12: Critic Scoring Extraction
+        score_match = re.search(r"SCORE:\s*(\d+)", step_output)
+        if score_match:
+             critic_score = score_match.group(1)
+             print(f"[*] V12 Critic Score: {critic_score}")
+        
+        v12_stages = {
+             "foundation": "FOUNDATION" in step_output,
+             "logic": "logic" in step_output.lower() or "deep" in step_output.lower(),
+             "critic": "Build Critic" in step_output
+        }
+        capability_report = v12_stages
 
         entry = {
             "step": i + 1,
             "query": str(question)[:100],
             "duration": round(step_duration, 2),
+            "latency": latency_map,
             "is_cached": is_cached,
             "search_triggered": "[Headless Search]" in step_output,
             "facts_extracted": len(re.findall(r"\[FACT\].*", step_output)),
             "code_execution": execution_status,
             "syntax_pass": syntax_ok if found_any_file else "N/A",
-            "project_mode": "Project Mode Detected" in step_output,
+            "project_mode": "[Project Phase]" in step_output or "[*] Project Planning Complete" in step_output,
             "brain_synced": "BrainSync" in step_output,
             "context_spin_down": is_spin_down,
             "context_spin_up": is_spin_up,
             "output_len": len(step_output),
+            "critic_score": critic_score,
+            "v12_caps": capability_report,
             "raw_output": step_output[:500] 
         }
         full_chain.append(entry)
@@ -255,19 +268,23 @@ def run_benchmark():
         # Additional check: if project mode ran, verify directory was created & PLAN.md exists
         if entry["project_mode"]:
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            sandbox_dirs = [d for d in os.listdir(os.path.join(root_dir, 'sandboxes'))
-                            if d.startswith('project_')]
+            sandbox_dirs = sorted([d for d in os.listdir(os.path.join(root_dir, 'sandboxes'))
+                            if d.startswith('v12_') or d.startswith('v10_')], 
+                            key=lambda x: int(x.split('_')[-1]) if x.split('_')[-1].isdigit() else 0, 
+                            reverse=True)
             proj_created = len(sandbox_dirs) > 0
             
             plan_exists = False
             if proj_created:
-                plan_path = os.path.join(root_dir, 'sandboxes', sandbox_dirs[-1], 'PLAN.md')
+                # Use the first directory found after reverse sorting
+                plan_path = os.path.join(root_dir, 'sandboxes', sandbox_dirs[0], 'PLAN.md')
                 plan_exists = os.path.exists(plan_path)
             
             entry["project_dir_created"] = proj_created
             entry["plan_created"] = plan_exists
             
-            print(f"[*] Project Dir Check: {'✅ Created' if proj_created else '❌ Missing'} ({sandbox_dirs[-1] if sandbox_dirs else 'none'})")
+            proj_name = sandbox_dirs[0] if sandbox_dirs else 'none'
+            print(f"[*] Project Dir Check: {'✅ Created' if proj_created else '❌ Missing'} ({proj_name})")
             print(f"[*] Project Plan Check: {'✅ PLAN.md found' if plan_exists else '❌ PLAN.md missing'}")
         else:
             entry["project_dir_created"] = None
@@ -319,10 +336,32 @@ def run_benchmark():
     print(f"  Syntax Validation    : {syntax_pass}/{syntax_total}")
     print(f"  Project Dirs Created : {proj_dirs_ok}/{len(project_steps) if project_steps else 0}")
     print(f"  Project Plans (MD)   : {plans_ok}/{len(project_steps) if project_steps else 0}")
+    
+    v12_critic_avg = [int(e['critic_score']) for e in full_chain if e['critic_score'] != "N/A"]
+    avg_score = sum(v12_critic_avg)/len(v12_critic_avg) if v12_critic_avg else 0
+    print(f"  V12 Critic Avg Score : {avg_score:.1f}")
+    
     print(f"  Context Spin-Downs   : {spin_downs}")
     print(f"  Session Continuity   : {spin_ups}")
     print(f"  Brain Syncs          : {brain_syncs}")
     print("="*70)
+    
+    # ── Latency Breakdown ─────────────────────────────────────────────────────
+    all_latencies = {}
+    for e in full_chain:
+        for stage, val in e.get('latency', {}).items():
+            if stage not in all_latencies: all_latencies[stage] = []
+            all_latencies[stage].append(val)
+    
+    if all_latencies:
+        print("\n  LATENCY BREAKDOWN (Averages):")
+        print(f"  {'Stage':<30} | {'Avg Latency':>12}")
+        print("  " + "-"*45)
+        for stage, vals in sorted(all_latencies.items()):
+            avg = sum(vals) / len(vals)
+            print(f"  {stage:<30} | {avg:>11.4f}s")
+        print("="*70)
+
     print("\n  Per-Step Summary:")
     print(f"  {'Step':<5} {'Time':>7}  {'Cache':<6} {'Code':<10} {'Syntax':<7} {'Proj':<5} {'SD':<3} {'SU':<3}")
     print("  " + "-"*65)

@@ -1,0 +1,90 @@
+--- Starting ULTIMATE Neurosymbolic Stress Test ---
+[*] Logging verbatim output to: test/logs/benchmark_1776865577.log
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 1] Sending: create a next js project with frontend, backend, db, login and register and a da...
+Gemma is thinking (DEEP mode)...
+[*] Project Phase: Planning & Manifesting...
+[*] Project Planning Complete: v10_create_a_next_js_pro_1776865726
+[*] Manifest Audit: 3 valid files identified.
+    Target List: app/layout.tsx, app/dashboard/page.tsx, app/login/[id].tsx...
+[*] Build Attempt 1/10: 2 missing, 1 invalid.
+[*] Build Attempt 2/10: 2 missing, 1 invalid.
+[!] Authoritative Scaffolding: Forcing deterministic write for app/layout.tsx
+[*] Build Attempt 3/10: 1 missing, 0 invalid.
+[*] Build Attempt 4/10: 1 missing, 1 invalid.
+[*] Build Attempt 5/10: 1 missing, 1 invalid.
+[*] Build Attempt 6/10: 1 missing, 1 invalid.
+[*] Build Attempt 7/10: 1 missing, 1 invalid.
+[*] Build Attempt 8/10: 1 missing, 1 invalid.
+[*] Build Attempt 9/10: 1 missing, 1 invalid.
+[+] Build Complete: Manifest satisfied and validated.
+Gemma: [FILE: app/login/[id].tsx]
+```tsx
+import React, { useState } from 'react';
+import { UserData } from '@/types'; // Assuming types are defined elsewhere
+
+interface LoginProps {
+  user: UserData | null;
+}
+
+export default function LoginPage({ user }: LoginProps) {
+  if (!user) {
+    return <div className="p-8">Please log in to view your dashboard.</div>;
+  }
+
+  return (
+    <div className="p-8">
+      <h1 className="text-3xl font-bold mb-6">Welcome to Your Dashboard</h1>
+      <p>User ID: {user.id}</p>
+      {/* More dashboard content */}
+    </div>
+  );
+}
+```
+
+[FACT] FILE: app/login/[id].tsx | relation | File content | The file contains a functional
+
+You: [*] Project Dir Check: ✅ Created (v10_create_a_next_js_pro_1776865726)
+[*] Project Plan Check: ✅ PLAN.md found
+
+[+] Step 1 complete in 291.87s | Cache: False | Code: N/A | Syntax: N/A | Project: True | SpinDown: False | SpinUp: False
+
+--- Stress Test Complete ---
+
+======================================================================
+  ULTIMATE BENCHMARK SCORECARD v2.0
+======================================================================
+  Total Time           : 313.75s
+  Facts Extracted      : 1
+  Web Searches         : 0
+  Semantic Cache Hits  : 0
+  Code Execution Pass  : 0/0
+  Syntax Validation    : 0/0
+  Project Dirs Created : 1/1
+  Project Plans (MD)   : 1/1
+  Context Spin-Downs   : 0
+  Session Continuity   : 0
+  Brain Syncs          : 0
+======================================================================
+
+  Per-Step Summary:
+  Step     Time  Cache  Code       Syntax  Proj  SD  SU 
+  -----------------------------------------------------------------
+  1      291.9s  N      N/A        N/A     Y     N   N  
+======================================================================
+
+--- Syncing benchmark results to Agent Brain ---
+[+] Sync complete. 1 step records in agent vectorized memory.
+
+--- Post-Benchmark BrainSync Verification ---
+[✅] Benchmark records are semantically searchable in agent memory (3 hits).

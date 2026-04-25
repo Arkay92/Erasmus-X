@@ -1,0 +1,275 @@
+--- Starting ULTIMATE Neurosymbolic Stress Test ---
+[*] Logging verbatim output to: test/logs/benchmark_1777105897.log
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 1] Sending: what is the capital of France?...
+[LATENCY] TASK_ROUTING: 0.0094s
+[LATENCY] SEMANTIC_CACHE_LOOKUP: 0.0073s
+[LATENCY] STABILITY_GUARD: 0.0000s
+[LATENCY] VECTOR_KNOWLEDGE_RETRIEVAL: 0.0148s
+[LATENCY] CONTEXT_ASSEMBLY: 6.4491s
+Gemma is thinking (FAST mode)...
+[LATENCY] LLM_INFERENCE: 9.5850s
+[LATENCY] CONTRACT_ENFORCEMENT: 0.0000s
+[*] Reasoning Phase: Analyzing reasoning performance for RL feedback...
+[!] No Chain of Thought found in recent history. Skipping analysis.
+Gemma: 
+
+You: 
+[+] Step 1 complete in 16.09s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 2] Sending: write a python script that calculates the factorial of a number and save it to f...
+[LATENCY] TASK_ROUTING: 0.0132s
+[LATENCY] SEMANTIC_CACHE_LOOKUP: 0.0072s
+[LATENCY] STABILITY_GUARD: 0.0000s
+[LATENCY] VECTOR_KNOWLEDGE_RETRIEVAL: 0.0243s
+[LATENCY] CONTEXT_ASSEMBLY: 6.3939s
+Gemma is thinking (DEEP mode)...
+[LATENCY] LLM_INFERENCE: 39.3715s
+[LATENCY] CONTRACT_ENFORCEMENT: 0.0000s
+[*] Reasoning Phase: Analyzing reasoning performance for RL feedback...
+[!] No Chain of Thought found in recent history. Skipping analysis.
+[*] Manifest Audit: 0 valid files identified.
+[*] V12 Build Stage: FOUNDATION (0 targets identified)
+[LATENCY] CODING_LOOP_ITERATION_0: 0.0026s
+[*] V12 Progress: No manifest | 1 errors
+[*] Build Attempt 1/13: 0 missing, 1 invalid.
+[LATENCY] CODING_LOOP_ITERATION_1: 0.0160s
+[*] V12 Progress: No manifest | 0 errors
+[+] Manifest satisfied. Escalating to V13 Build Critic (Pass 1)...
+[*] V12 Phase: Running Critic Evaluation...
+[LATENCY] CRITIC_EVALUATION: 32.5164s
+[+] Build Complete: V13 Critic PASS (Score: 100)
+[*] Reasoning Phase: Analyzing reasoning performance for RL feedback...
+[!] No Chain of Thought found in recent history. Skipping analysis.
+[LATENCY] REASONING_ANALYSIS: 0.0000s
+Gemma: [FILE: factorial.py]
+```python
+import sys
+
+def calculate_factorial(n: int) -> int:
+    """Calculates the factorial of a non-negative integer."""
+    if n < 0:
+        raise ValueError("Factorial is not defined for negative numbers.")
+    if n == 0:
+        return 1
+
+    factorial = 1
+    for i in range(1, n + 1):
+        factorial *= i
+    return factorial
+
+if __name__ == "__main__":
+    try:
+        # Example usage:
+        number = 5
+        result = calculate_factorial(number)
+        print(f"The factorial of {number} is: {result}")
+    except ValueError as e:
+        print(f"Error: {e}")
+```
+
+[FACT] The script calculates the factorial of a number. | relation | factorial.py
+
+You: 
+[+] Step 2 complete in 111.18s | Cache: False | Code: N/A | Syntax: N/A | Project: False | SpinDown: False | SpinUp: False
+Connecting to the Neurosymbolic Agent Pipeline...
+[*] Sandbox Manager initialized at: sandboxes
+[*] Initializing Local LLM (gpt2)...
+Device set to use cpu
+[+] Local LLM ready on CPU.
+
+Connected successfully! Agent Brain is online.
+Neurosymbolic System Active! Ready for chat.
+--------------------------------------------------
+
+You: 
+[STRESS STEP 3] Sending: create a simple project structure for a todo list app...
+[LATENCY] TASK_ROUTING: 0.0111s
+[LATENCY] SEMANTIC_CACHE_LOOKUP: 0.0063s
+[LATENCY] STABILITY_GUARD: 0.0000s
+[LATENCY] VECTOR_KNOWLEDGE_RETRIEVAL: 0.0168s
+[LATENCY] CONTEXT_ASSEMBLY: 6.3357s
+Gemma is thinking (DEEP mode)...
+[LATENCY] LLM_INFERENCE: 34.3108s
+[LATENCY] CONTRACT_ENFORCEMENT: 0.0000s
+[*] Reasoning Phase: Analyzing reasoning performance for RL feedback...
+[!] No Chain of Thought found in recent history. Skipping analysis.
+[*] Project Phase: Planning & Manifesting...
+[LATENCY] PROJECT_RESEARCH: 2.5758s
+[LATENCY] PLAN_GENERATION: 70.2174s
+[*] V12 Phase: Generating Capability Contract...
+[+] Contract derived: Todo List Application
+[LATENCY] CONTRACT_GENERATION: 42.9392s
+[*] Project Planning Complete: v12_create_a_simple_proj_1777106195
+[*] Manifest Audit: 3 valid files identified.
+    Target List: app/layout.tsx, app/dashboard/page.tsx, components/TodoList.tsx...
+[*] Contract Alignment: Synchronizing 3 critical targets.
+    [+] Adding mandatory file: app/page.tsx
+    [+] Adding mandatory file: lib/db.ts
+[*] V12 Build Stage: FOUNDATION (5 targets identified)
+[LATENCY] CODING_LOOP_ITERATION_0: 0.0202s
+[*] V12 Progress: 0/3 nodes linked | 2 errors
+[*] Build Attempt 1/13: 5 missing, 2 invalid.
+[LATENCY] CODING_LOOP_ITERATION_1: 0.0011s
+[*] V12 Progress: 0/3 nodes linked | 2 errors
+[*] Build Attempt 2/13: 5 missing, 2 invalid.
+[!] Authoritative Logic Injection (Failure): Forcing deep implementation for app/layout.tsx
+[+] Dependency Induction: Added 1 missing targets (globals.css)
+[LATENCY] CODING_LOOP_ITERATION_2: 0.0004s
+[*] V12 Progress: 0/4 nodes linked | 1 errors
+[*] Build Attempt 3/13: 5 missing, 1 invalid.
+[LATENCY] CODING_LOOP_ITERATION_3: 0.0025s
+[*] V12 Progress: 0/4 nodes linked | 0 errors
+[*] Build Attempt 4/13: 4 missing, 0 invalid.
+[LATENCY] CODING_LOOP_ITERATION_4: 0.0007s
+[*] V12 Progress: 0/4 nodes linked | 1 errors
+[*] Build Attempt 5/13: 4 missing, 1 invalid.
+[!] Authoritative Logic Injection (Failure): Forcing deep implementation for components/TodoList.tsx
+[LATENCY] CODING_LOOP_ITERATION_5: 0.0006s
+[*] V12 Progress: 0/4 nodes linked | 0 errors
+[*] Build Attempt 6/13: 3 missing, 0 invalid.
+[LATENCY] CODING_LOOP_ITERATION_6: 0.0039s
+[*] V12 Progress: 0/4 nodes linked | 0 errors
+[*] Build Attempt 7/13: 2 missing, 0 invalid.
+[LATENCY] CODING_LOOP_ITERATION_7: 0.0022s
+[*] V12 Progress: 0/4 nodes linked | 0 errors
+[*] Build Attempt 8/13: 1 missing, 0 invalid.
+[LATENCY] CODING_LOOP_ITERATION_8: 0.0128s
+[*] V12 Progress: 0/4 nodes linked | 0 errors
+[+] Manifest satisfied. Escalating to V13 Build Critic (Pass 1)...
+[*] V12 Phase: Running Critic Evaluation...
+[LATENCY] CRITIC_EVALUATION: 50.4676s
+[!] V13 Critic Rejection: Logic depth or correctness issues found.
+[*] Failure Learned: failure_1777106520.json
+[LATENCY] REASONING_ANALYSIS: 0.0009s
+[!] Critic rejected build but provided no specific file targets. Engaging Fidelity Scanner...
+[LATENCY] FIDELITY_SCAN: 0.0003s
+[!] Fidelity Scan passed but Critic still rejected. Declaring closure failure.
+Gemma: [FILE: globals.css]
+```css
+/*
+ * Global styles for the Todo List application.
+ * This file sets up the base styling for the entire application.
+ */
+
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #f0f2f5;
+  min-height: 100vh;
+  margin: 0;
+}
+
+#main-container {
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 20px;
+  background-color: white;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+  min-height: 80vh;
+}
+
+.todo-item {
+  padding: 15px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eee;
+  background-color: #f9f9f9;
+  transition: background-color 0.3s;
+}
+
+.todo-item:hover {
+  background-color: #f0f2f5;
+}
+
+.task-completed {
+  text-decoration: line-through;
+  color: #888;
+}
+```
+[FACT] globals.css | contains | base layout styling
+[FACT] globals.css | defines | body styles
+[FACT] globals.css | defines | #main-container styling
+
+You: [*] Project Dir Check: ✅ Created (v12_implement_a_high_per_1777105210)
+[*] Project Plan Check: ✅ PLAN.md found
+
+[+] Step 3 complete in 461.32s | Cache: False | Code: N/A | Syntax: N/A | Project: True | SpinDown: False | SpinUp: False
+
+--- Stress Test Complete ---
+
+======================================================================
+  ULTIMATE BENCHMARK SCORECARD v2.0
+======================================================================
+  Total Time           : 647.12s
+  Facts Extracted      : 4
+  Web Searches         : 0
+  Semantic Cache Hits  : 0
+  Code Execution Pass  : 0/0
+  Syntax Validation    : 0/0
+  Project Dirs Created : 1/1
+  Project Plans (MD)   : 1/1
+  V12 Critic Avg Score : 0.0
+  Context Spin-Downs   : 0
+  Session Continuity   : 0
+  Brain Syncs          : 0
+======================================================================
+
+  LATENCY BREAKDOWN (Averages):
+  Stage                          |  Avg Latency
+  ---------------------------------------------
+  CODING_LOOP_ITERATION_0        |      0.0114s
+  CODING_LOOP_ITERATION_1        |      0.0086s
+  CODING_LOOP_ITERATION_2        |      0.0004s
+  CODING_LOOP_ITERATION_3        |      0.0025s
+  CODING_LOOP_ITERATION_4        |      0.0007s
+  CODING_LOOP_ITERATION_5        |      0.0006s
+  CODING_LOOP_ITERATION_6        |      0.0039s
+  CODING_LOOP_ITERATION_7        |      0.0022s
+  CODING_LOOP_ITERATION_8        |      0.0128s
+  CONTEXT_ASSEMBLY               |      6.3929s
+  CONTRACT_ENFORCEMENT           |      0.0000s
+  CONTRACT_GENERATION            |     42.9392s
+  CRITIC_EVALUATION              |     41.4920s
+  FIDELITY_SCAN                  |      0.0003s
+  LLM_INFERENCE                  |     27.7558s
+  PLAN_GENERATION                |     70.2174s
+  PROJECT_RESEARCH               |      2.5758s
+  REASONING_ANALYSIS             |      0.0004s
+  SEMANTIC_CACHE_LOOKUP          |      0.0069s
+  STABILITY_GUARD                |      0.0000s
+  TASK_ROUTING                   |      0.0112s
+  VECTOR_KNOWLEDGE_RETRIEVAL     |      0.0186s
+======================================================================
+
+  Per-Step Summary:
+  Step     Time  Cache  Code       Syntax  Proj  SD  SU 
+  -----------------------------------------------------------------
+  1       16.1s  N      N/A        N/A     N     N   N  
+  2      111.2s  N      N/A        N/A     N     N   N  
+  3      461.3s  N      N/A        N/A     Y     N   N  
+======================================================================
+
+--- Syncing benchmark results to Agent Brain ---
+[+] Sync complete. 3 step records in agent vectorized memory.
+
+--- Post-Benchmark BrainSync Verification ---
+[✅] Benchmark records are semantically searchable in agent memory (3 hits).

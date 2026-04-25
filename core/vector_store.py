@@ -22,6 +22,11 @@ class HypervectorDB:
         # HDC Intent Routing (Fast Reasoning Lane)
         self.intent_centers = None # Class centroids for SEARCH vs RECALL intent
         
+        # Deterministic Key-Value Registry (for structured data that HDC can't reliably search)
+        self.feature_packs = {}   # { feature_name: pack_dict }
+        self.failure_log = []     # structured failure records
+        self.reasoning_lessons = [] # structured lesson records
+        
         # Expanded ASCII character alphabet for robust encoding
         self.alphabet = "abcdefghijklmnopqrstuvwxyz0123456789 .,!?-()\":;'"
         self.char_to_idx = {c: i for i, c in enumerate(self.alphabet)}
@@ -215,6 +220,28 @@ class HypervectorDB:
                     break
         return results
 
+    def add_capability_association(self, name, cap_type, trigger_sentences):
+        """Elite V7: Records association between triggers and a specific capability (shard/tool)."""
+        for sentence in trigger_sentences:
+            marker = f"[CAPABILITY_ASSOCIATION] {cap_type.upper()}: {name} | Trigger: {sentence}"
+            self.add_document(marker)
+        print(f"[*] Brain: Associated {len(trigger_sentences)} patterns with {cap_type} '{name}'.")
+
+    def find_best_capability(self, query, threshold=0.35):
+        """Elite V7: Searches for learned capabilities that match the current query."""
+        results = self.search(query, threshold=threshold, top_k=5)
+        for score, doc in results:
+            if "[CAPABILITY_ASSOCIATION]" in doc:
+                # Extract: SHARD: name | Trigger: ...
+                match = re.search(r"\[CAPABILITY_ASSOCIATION\] (SHARD|TOOL): (\w+) \|", doc)
+                if match:
+                    return {
+                        'type': match.group(1),
+                        'name': match.group(2),
+                        'score': score
+                    }
+        return None
+
     def get_latest_session_state(self):
         """Deterministic retrieval of the last [SESSION_STATE] summary."""
         # Search backwards through the documents list for the marker
@@ -222,6 +249,36 @@ class HypervectorDB:
             if "[SESSION_STATE]" in doc:
                 return doc
         return None
+
+    def register_feature_pack(self, feature_name, pack_dict):
+        """Stores a feature pack in the deterministic registry (not HDC-encoded)."""
+        self.feature_packs[feature_name] = pack_dict
+        print(f"[*] Brain: Registered feature pack '{feature_name}' ({len(pack_dict.get('files', []))} files).")
+
+    def get_feature_pack(self, feature_name):
+        """Retrieves a feature pack by exact name from the deterministic registry."""
+        return self.feature_packs.get(feature_name)
+
+    def record_failure(self, record):
+        """Appends a structured failure record to the deterministic log."""
+        self.failure_log.append(record)
+        # Keep bounded
+        if len(self.failure_log) > 50:
+            self.failure_log = self.failure_log[-50:]
+
+    def get_recent_failures(self, limit=3):
+        """Returns the most recent failure records."""
+        return self.failure_log[-limit:] if self.failure_log else []
+
+    def record_lesson(self, lesson_obj):
+        """Appends a structured reasoning lesson."""
+        self.reasoning_lessons.append(lesson_obj)
+        if len(self.reasoning_lessons) > 50:
+            self.reasoning_lessons = self.reasoning_lessons[-50:]
+
+    def get_lessons(self, limit=5):
+        """Returns the most recent reasoning lessons."""
+        return self.reasoning_lessons[-limit:] if self.reasoning_lessons else []
 
     def save(self):
         # Create directory if it doesn't exist
@@ -238,7 +295,10 @@ class HypervectorDB:
             "convo_chain": self.convo_chain,
             "prompt_cache": self.prompt_cache,
             "cache_tensor": self.cache_tensor,
-            "intent_centers": self.intent_centers
+            "intent_centers": self.intent_centers,
+            "feature_packs": self.feature_packs,
+            "failure_log": self.failure_log,
+            "reasoning_lessons": self.reasoning_lessons
         }
         
         # 2. Atomic Save: Write to temp file and rename (prevent corruption on crash)
@@ -288,6 +348,9 @@ class HypervectorDB:
         self.prompt_cache = data.get("prompt_cache", {})
         self.cache_tensor = data.get("cache_tensor")
         self.intent_centers = data.get("intent_centers")
+        self.feature_packs = data.get("feature_packs", {})
+        self.failure_log = data.get("failure_log", [])
+        self.reasoning_lessons = data.get("reasoning_lessons", [])
 
         # Specific migration for Knowledge Graph JSON
         kg_json = "memories/knowledge_graph.json"

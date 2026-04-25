@@ -11,14 +11,22 @@ def _load_prompt(filename, default_text=""):
     except Exception:
         return default_text
 
+# --- CORE PROMPT MANAGEMENT ---
+# All significant prompts are stored as external .md files in shards/core/
+# To add a new prompt:
+# 1. Create a markdown file in shards/core/
+# 2. Add a variable here using _load_prompt("filename.md")
+# This ensures prompts remain modular and can be edited without touching Python code.
+
 # System prompts for the Neurosymbolic Agent modes
-SYSTEM_PROMPT = _load_prompt("system_prompt.md", "You are a helpful AI.\nIf you write functional code, prefix the block with a tag: [FILE: filename.py].\nAt the end of your answer, output triplets:\n[FACT] subject | relation | object")
-FAST_SYSTEM_PROMPT = _load_prompt("fast_system_prompt.md", "Answer briefly in 2–4 sentences. No formatting. No files.")
-MID_SYSTEM_PROMPT = _load_prompt("mid_system_prompt.md", "Provide a structured answer with facts extracted at the end.")
+SYSTEM_PROMPT = _load_prompt("system_prompt.md")
+FAST_SYSTEM_PROMPT = _load_prompt("fast_system_prompt.md")
+MID_SYSTEM_PROMPT = _load_prompt("mid_system_prompt.md")
+WORKING_NOTES_MODE = _load_prompt("working_notes_mode.md")
 
 # Agnostic Query Brain prompts
-ENTITY_PROMPT = _load_prompt("entity_prompt.md", "Identify the core subject or entity of this message. Be extremely concise (1-3 words). Text: ")
-SKEPTIC_PROMPT = _load_prompt("skeptic_prompt.md", "Does this query require real-time data, current events, or information that changes frequently? Answer ONLY 'YES' or 'NO'. Text: ")
+ENTITY_PROMPT = _load_prompt("entity_prompt.md")
+SKEPTIC_PROMPT = _load_prompt("skeptic_prompt.md")
 
 # Search/Discovery keywords (Not moved to MD as it's a simple list)
 DISCOVERY_KEYWORDS = ['who', 'what', 'where', 'when', 'why', 'how', 'find', 'search', 'latest', 'news', 'update', 'status']
@@ -41,49 +49,13 @@ CODE_REVIEW_PROMPT = _load_prompt("code_review_prompt.md")
 PROJECT_PLANNER_PROMPT = _load_prompt("project_planner_prompt.md")
 
 # Execution Policies (Elite V4)
-EXECUTION_POLICY_CODE = """[CONSTRAINT: EXECUTION POLICY]
-You MUST output the full runnable source code for all requested functionality.
-Requirements:
-1. Wrap each file in a [FILE: filename] tag and a code block.
-2. NO conversational prose. NO summaries. NO apologies.
-3. Only the code is allowed. If you explain the code, you HAVE FAILED THE TASK.
-4. DEPENDENCY RULE: Do not invent or create new 'utility' or 'core' files. Stick to standard libraries or files already established in the plan.
-5. NUMERICAL RULE: For temperature conversions, Fahrenheit to Celsius must use (F-32)/1.8. Never use 1.7 or other approximations.
-"""
+EXECUTION_POLICY_CODE = _load_prompt("execution_policy_code.md")
 
 # Grounded Summary Template
-GROUNDED_SUMMARY_PROMPT = """[GROUNDED STATE SUMMARY]
-Our conversation history is being reset. Based on the following retrieved memories and our current history, provide a COHERENT NARRATIVE SYNTHESIS of what has happened.
-Focus on:
-1. What was the user's core intent?
-2. What critical facts were established?
-3. What is the current progress of the active task (e.g., Planet Explorer Project, Higgs calculation)?
-4. What specifically needs to happen next?
-
-DO NOT list metadata. DO NOT output triplets here. Be the bridge between this session and the next.
-
-RETRIEVED CONTEXT:
-{retrieved_context}
-
-CURRENT HISTORY:
-{history_context}
-"""
+GROUNDED_SUMMARY_PROMPT = _load_prompt("grounded_summary_prompt.md")
 
 # Final Project Summary Report Prompt
-PROJECT_REPORT_PROMPT = """[PROJECT REPORT GENERATOR]
-Based on the following project plan and the list of files actually generated, create a professional summary.
-Include:
-1. **Description**: What the project does.
-2. **Entrypoint**: Which file to run first.
-3. **Run Instructions**: How to execute the project.
-4. **Unresolved Issues**: Anything missing or failed during construction.
+PROJECT_REPORT_PROMPT = _load_prompt("project_report_prompt.md")
 
-PLAN:
-{plan_text}
-
-GENERATED FILES:
-{files_list}
-
-TEST RESULTS:
-{test_results}
-"""
+# Autonomous Capability Synthesis
+AUTONOMOUS_SYNTHESIS_PROMPT = _load_prompt("autonomous_synthesis_prompt.md")
