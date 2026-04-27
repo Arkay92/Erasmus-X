@@ -44,6 +44,10 @@ class ScaffoldRegistry:
             lambda text, meta: _is_booking_system_request(text),
             _booking_system_scaffold,
         )
+        self.register(
+            lambda text, meta: _is_plumber_booking_business_request(text),
+            _plumber_booking_business_scaffold,
+        )
 
 
 def _next_prisma_scaffold() -> Scaffold:
@@ -126,6 +130,14 @@ def _is_booking_system_request(text: str) -> bool:
         "booking" in lower
         and any(term in lower for term in ("login", "register", "auth"))
         and any(term in lower for term in ("admin", "portal", "dashboard"))
+    )
+
+
+def _is_plumber_booking_business_request(text: str) -> bool:
+    lower = text.lower()
+    return (
+        "plumber" in lower
+        and any(term in lower for term in ("booking", "appointment", "business", "saas"))
     )
 
 
@@ -448,4 +460,101 @@ describe('auth helpers', () => {
 """,
         },
         verification_commands=["npm install", "npm test", "npm run build"],
+    )
+
+
+def _plumber_booking_business_scaffold() -> Scaffold:
+    scaffold = _booking_system_scaffold()
+    files = dict(scaffold.files)
+    files["PLAN.md"] = "# Plumber Booking Business\n\n- Public service pages for emergency plumbing, repairs, and quotes\n- Booking API and admin dashboard\n- Auth/session helpers\n- Email notification helper\n- Stripe checkout route skeleton with explicit environment validation\n- Deploy script and test suite\n"
+    files["app/page.tsx"] = """const services = ['Emergency callouts', 'Leak repairs', 'Boiler servicing', 'Bathroom installs'];
+
+export default function HomePage() {
+  return <main><h1>Reliable Local Plumbing</h1><p>Book trusted plumbing appointments with clear availability and fast follow-up.</p><a href=\"/book\">Book a plumber</a><section>{services.map(service => <article key={service}><h2>{service}</h2><p>Professional service with transparent scheduling.</p></article>)}</section></main>;
+}
+"""
+    files["app/book/page.tsx"] = """'use client';
+import { FormEvent, useState } from 'react';
+
+export default function BookingPage() {
+  const [message, setMessage] = useState('');
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const response = await fetch('/api/bookings/public', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(Object.fromEntries(form)) });
+    const payload = await response.json();
+    setMessage(response.ok ? `Booking requested for ${payload.service}` : payload.error ?? 'Booking failed');
+  }
+  return <main><h1>Book a Plumber</h1><form onSubmit={submit}><input name=\"customerName\" placeholder=\"Name\" required /><input name=\"customerEmail\" type=\"email\" placeholder=\"Email\" required /><select name=\"service\" required><option>Emergency callout</option><option>Leak repair</option><option>Boiler service</option></select><input name=\"startsAt\" type=\"datetime-local\" required /><textarea name=\"notes\" placeholder=\"Describe the issue\" /><button type=\"submit\">Request Booking</button></form>{message && <p>{message}</p>}</main>;
+}
+"""
+    files["app/api/bookings/public/route.ts"] = """import { NextResponse } from 'next/server';
+import { createBooking } from '@/lib/bookings';
+import { buildBookingEmail } from '@/lib/email';
+
+export async function POST(request: Request) {
+  const result = await createBooking(await request.json());
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+  const email = buildBookingEmail(result.booking.customerEmail, result.booking.service, result.booking.startsAt.toISOString());
+  return NextResponse.json({ id: result.booking.id, service: result.booking.service, emailPreview: email.subject }, { status: 201 });
+}
+"""
+    files["app/api/checkout/route.ts"] = """import { NextResponse } from 'next/server';
+
+export async function POST(request: Request) {
+  const body = await request.json();
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) return NextResponse.json({ error: 'Stripe is not configured' }, { status: 503 });
+  const service = String(body.service ?? 'plumbing appointment');
+  return NextResponse.json({ checkoutMode: 'payment', service, status: 'ready' });
+}
+"""
+    files["lib/email.ts"] = """export function buildBookingEmail(customerEmail: string, service: string, startsAt: string) {
+  return {
+    to: customerEmail,
+    subject: `Booking request received for ${service}`,
+    text: `Your plumbing booking for ${service} at ${startsAt} has been received. We will confirm shortly.`,
+  };
+}
+"""
+    files["lib/seo.ts"] = """export const seoPages = [
+  { slug: 'emergency-plumber', title: 'Emergency Plumber', description: 'Fast response plumbing callouts.' },
+  { slug: 'leak-repair', title: 'Leak Repair', description: 'Trace and fix leaks before damage spreads.' },
+  { slug: 'boiler-service', title: 'Boiler Service', description: 'Schedule safe boiler servicing.' },
+];
+"""
+    files["scripts/deploy.sh"] = """#!/usr/bin/env sh
+set -eu
+npm test
+npm run build
+echo \"Deploy with your Next.js host after DATABASE_URL, SESSION_SECRET, and STRIPE_SECRET_KEY are configured.\"
+"""
+    files["test/email.test.ts"] = """import { describe, expect, it } from 'vitest';
+import { buildBookingEmail } from '../lib/email';
+
+describe('buildBookingEmail', () => {
+  it('creates a customer notification', () => {
+    const email = buildBookingEmail('customer@example.com', 'Leak repair', '2026-05-01T10:00:00.000Z');
+    expect(email.to).toBe('customer@example.com');
+    expect(email.subject).toContain('Leak repair');
+    expect(email.text).toContain('2026-05-01');
+  });
+});
+"""
+    files["test/seo.test.ts"] = """import { describe, expect, it } from 'vitest';
+import { seoPages } from '../lib/seo';
+
+describe('seoPages', () => {
+  it('contains service landing pages', () => {
+    expect(seoPages.map(page => page.slug)).toContain('emergency-plumber');
+    expect(seoPages.every(page => page.title && page.description)).toBe(true);
+  });
+});
+"""
+    files["SWARM_PLAN.md"] = "# Swarm Plan\n\n- architect: booking SaaS routes, schema, and deployment boundaries\n- builder: Next.js, Prisma, API, admin, and public booking files\n- tester: validation, auth, email, SEO, and route behavior tests\n- critic: reject placeholders and schema drift\n- security: sessions, password hashing, validation, and secrets\n"
+    return Scaffold(
+        name="plumber_booking_business_pack",
+        stack="nextjs-app-router|prisma|typescript|saas",
+        files=files,
+        verification_commands=["npm install", "npx prisma generate", "npm test", "npm run build"],
     )

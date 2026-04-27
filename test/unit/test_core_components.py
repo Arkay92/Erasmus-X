@@ -31,6 +31,9 @@ class TestErasmusStages(unittest.TestCase):
         self.assertTrue(meta['is_project'])
         self.assertEqual(meta['language'], "php")
 
+        meta = self.router.route("Build me a plumber booking business")
+        self.assertTrue(meta['is_project'])
+
     def test_context_budgeting(self):
         """Verify context builder correctly handles token limits."""
         builder = ContextBuilder()

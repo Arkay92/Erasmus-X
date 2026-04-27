@@ -68,7 +68,8 @@ class TaskRouter:
             'project', 'application', 'dashboard', 'website',
             'next.js', 'nextjs', 'react', 'express', 'fastapi', 'rest api',
             'full-stack', 'full stack', 'multiple files', 'bot', 'worker', 'tool',
-            'service', 'cli', 'webhook'
+            'service', 'cli', 'webhook', 'booking', 'business', 'saas', 'crm',
+            'marketplace', 'appointments'
         )
         has_project_target = any(t in lower for t in project_targets) or bool(re.search(r'\bapp\b', lower))
         if intent == "PROJECT" and confidence > 0.35 and has_project_target:

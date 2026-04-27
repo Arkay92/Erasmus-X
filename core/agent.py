@@ -35,6 +35,10 @@ from core.context_manager import ContextManager
 from core.feedback_store import FeedbackStore
 from core.scaffold_registry import ScaffoldRegistry
 from core.dynamic_scaffold_builder import DynamicScaffoldBuilder
+from core.execution_memory import ExecutionMemory
+from core.auto_pack_builder import AutoPackBuilder
+from core.economic_mode import EconomicMode
+from core.swarm_mode import SwarmMode
 from core.response_schema import make_response
 from core.inject_feature_packs import register_feature_packs
 from core.inject_prisma_packs import register_prisma_packs
@@ -87,6 +91,10 @@ class NeurosymbolicAgent:
         self.feedback_store = FeedbackStore()
         self.scaffold_registry = ScaffoldRegistry()
         self.dynamic_scaffold_builder = DynamicScaffoldBuilder(client=self.agent_client, searcher=self.searcher)
+        self.execution_memory = ExecutionMemory()
+        self.auto_pack_builder = AutoPackBuilder(brain=self.brain)
+        self.economic_mode = EconomicMode()
+        self.swarm_mode = SwarmMode()
         self._ensure_builtin_feature_packs()
         
         self._pre_cache_shards()
@@ -345,6 +353,15 @@ class NeurosymbolicAgent:
         return make_response(raw_response, clean_ans, status="ok", metadata=meta)
 
     def _try_scaffold_project(self, user_input, meta):
+        economic_plan = self.economic_mode.evaluate(user_input, list(getattr(self.brain, "feature_packs", {}).keys()))
+        memory_matches = self.execution_memory.retrieve(user_input, meta.get("target_stack", ""), limit=3)
+        if economic_plan.get("matching_packs"):
+            print(f"[*] Economic Mode: matching packs found: {', '.join(economic_plan['matching_packs'])}")
+        if economic_plan.get("sellable_output"):
+            print("[*] Economic Mode: sellable/template-worthy output detected.")
+        if memory_matches:
+            print(f"[*] Execution Memory: retrieved {len(memory_matches)} similar build record(s).")
+
         scaffold = self.scaffold_registry.match(user_input, meta)
         if not scaffold:
             scaffold = self.dynamic_scaffold_builder.build(user_input, meta)
@@ -358,6 +375,9 @@ class NeurosymbolicAgent:
         print(f"[*] Project Planning Complete: {project_dir}")
         manifest = list(scaffold.files)
         blocks = []
+        if self.swarm_mode.should_activate(user_input) and "SWARM_PLAN.md" not in scaffold.files:
+            blocks.append(f"[FILE: SWARM_PLAN.md]\n```md\n{self.swarm_mode.as_markdown(user_input)}\n```")
+            manifest.append("SWARM_PLAN.md")
         for path, content in scaffold.files.items():
             lang = os.path.splitext(path)[1].lstrip('.') or 'text'
             blocks.append(f"[FILE: {path}]\n```{lang}\n{content}\n```")
@@ -373,6 +393,23 @@ class NeurosymbolicAgent:
         report = self._generate_report(project_dir, manifest, saved, failures)
         if scaffold.verification_commands:
             report += "\n**Verification Commands**: " + " && ".join(scaffold.verification_commands)
+        report += "\n**Economic Mode**: " + json.dumps(economic_plan, sort_keys=True)
+        if memory_matches:
+            report += f"\n**Execution Memory Matches**: {len(memory_matches)}"
+        build_status = "failed" if failures else "verified_static"
+        self.execution_memory.record_build(
+            user_input,
+            scaffold.stack,
+            project_dir,
+            saved,
+            scaffold.verification_commands,
+            build_status,
+            failures,
+        )
+        if not failures:
+            pack = self.auto_pack_builder.maybe_create_pack(user_input, scaffold, saved, failures)
+            if pack:
+                print(f"[+] Auto-Pack Builder: created reusable pack '{pack['feature']}'.")
         return response, report
 
     def _verify_scaffold_contract(self, scaffold, saved):
@@ -912,12 +949,30 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
         # Persist failure if low score
         if "SCORE: 100" not in critic_report:
              self.failure_memory.record_failure(contract.get('stack', 'unknown'), user_input, persistent_failures, critic_report)
+             self.execution_memory.record_build(
+                 user_input,
+                 contract.get('stack', 'unknown'),
+                 base_dir or "",
+                 actual_saved,
+                 [],
+                 "critic_failed",
+                 {"critic": critic_report, **persistent_failures},
+             )
              if config.ENABLE_REASONING_ENGINE:
                   self.reasoning_engine.analyze_task(user_input, base_messages + [{"role": "assistant", "content": current_response}], "FAILURE", critic_report)
         else:
              synced = sync_project_dir(self.brain, self.kg, scratch_dir)
              if synced:
                   print(f"[+] BrainSync: synced {synced} project data record(s).")
+             self.execution_memory.record_build(
+                 user_input,
+                 contract.get('stack', 'unknown'),
+                 base_dir or "",
+                 actual_saved,
+                 [],
+                 "critic_passed",
+                 {},
+             )
         
         # Final output persistence: Guarantee the last generated file lands on disk
         self._extract_and_save_files(current_response, base_dir=base_dir, manifest=manifest)
