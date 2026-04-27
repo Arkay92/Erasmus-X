@@ -4,3 +4,8 @@ __pycache__/
 .venv
 scratch/
 memories/scratch
+memories/
+sandboxes/
+test/logs/
+test/benchmark/logs/
+*.pyc

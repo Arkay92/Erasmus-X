@@ -26,6 +26,11 @@ class TestErasmusStages(unittest.TestCase):
         self.assertEqual(meta['mode'], 'DEEP')
         self.assertEqual(meta['intent'], 'PROJECT')
 
+        self.mock_brain.classify_intent.return_value = ("RECALL", 0.2)
+        meta = self.router.route("Build me a bot in PHP with tests and a webhook endpoint")
+        self.assertTrue(meta['is_project'])
+        self.assertEqual(meta['language'], "php")
+
     def test_context_budgeting(self):
         """Verify context builder correctly handles token limits."""
         builder = ContextBuilder()

@@ -1,14 +1,55 @@
 import torch
 import re
-import torchhd
-from torchhd import embeddings
+try:
+    import torchhd
+    from torchhd import embeddings
+except Exception:  # pragma: no cover - used when optional torch-hd package is absent
+    class _FallbackFunctional:
+        @staticmethod
+        def multiset(vectors):
+            return vectors.sum(dim=0)
+
+        @staticmethod
+        def ngrams(vectors, n=3):
+            if len(vectors) < n:
+                return vectors.sum(dim=0)
+            grams = []
+            for start in range(0, len(vectors) - n + 1):
+                gram = vectors[start].clone()
+                for offset in range(1, n):
+                    gram = gram * torch.roll(vectors[start + offset], shifts=offset)
+                grams.append(gram)
+            return torch.stack(grams).sum(dim=0)
+
+        @staticmethod
+        def cosine_similarity(query_hv, tensor):
+            query = query_hv.unsqueeze(0) if query_hv.dim() == 1 else query_hv
+            return torch.nn.functional.cosine_similarity(query, tensor, dim=-1)
+
+    class _FallbackEmbeddings:
+        class Random:
+            def __init__(self, count, dim):
+                self.weight = torch.randn(count, dim)
+
+            def __call__(self, indices):
+                return self.weight[indices]
+
+    class _FallbackTorchHD:
+        functional = _FallbackFunctional()
+
+    torchhd = _FallbackTorchHD()
+    embeddings = _FallbackEmbeddings()
 import os
 import shutil
 import tempfile
+from core import config
+from core.runtime_paths import ensure_writable_file_path
 
 class HypervectorDB:
-    def __init__(self, filename="memories/agent_brain.pt", dim=10000):
-        self.filename = filename
+    def __init__(self, filename=None, dim=10000):
+        if filename is None:
+            filename = config.BRAIN_STORAGE_PATH
+        self.filename = ensure_writable_file_path(filename, "memories")
         self.dim = dim
         self.documents = []
         self.memory_tensor = None
@@ -281,41 +322,45 @@ class HypervectorDB:
         return self.reasoning_lessons[-limit:] if self.reasoning_lessons else []
 
     def save(self):
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(self.filename), exist_ok=True)
-        
-        # 1. Create backup of current stable file
-        if os.path.exists(self.filename):
-            shutil.copy2(self.filename, self.filename + ".bak")
-
-        data = {
-            "documents": self.documents,
-            "memory_tensor": self.memory_tensor,
-            "graph_data": self.graph_data,
-            "convo_chain": self.convo_chain,
-            "prompt_cache": self.prompt_cache,
-            "cache_tensor": self.cache_tensor,
-            "intent_centers": self.intent_centers,
-            "feature_packs": self.feature_packs,
-            "failure_log": self.failure_log,
-            "reasoning_lessons": self.reasoning_lessons
-        }
-        
-        # 2. Atomic Save: Write to temp file and rename (prevent corruption on crash)
-        fd, temp_path = tempfile.mkstemp(dir=os.path.dirname(self.filename))
+        storage_dir = os.path.dirname(self.filename)
+        os.makedirs(storage_dir, exist_ok=True)
+        temp_path = None
         try:
+            # 1. Create backup of current stable file
+            if os.path.exists(self.filename):
+                try:
+                    shutil.copy2(self.filename, self.filename + ".bak")
+                except Exception as backup_error:
+                    print(f"[Memory Backup Warning] {backup_error}")
+
+            data = {
+                "documents": self.documents,
+                "memory_tensor": self.memory_tensor,
+                "graph_data": self.graph_data,
+                "convo_chain": self.convo_chain,
+                "prompt_cache": self.prompt_cache,
+                "cache_tensor": self.cache_tensor,
+                "intent_centers": self.intent_centers,
+                "feature_packs": self.feature_packs,
+                "failure_log": self.failure_log,
+                "reasoning_lessons": self.reasoning_lessons
+            }
+
+            # 2. Atomic Save: Write to temp file and rename (prevent corruption on crash)
+            fd, temp_path = tempfile.mkstemp(dir=storage_dir)
             with os.fdopen(fd, 'wb') as f:
                 torch.save(data, f)
             # Rename is atomic on Unix and most Windows scenarios
             shutil.move(temp_path, self.filename)
         except Exception as e:
-            if os.path.exists(temp_path): os.remove(temp_path)
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
             print(f"[Memory Save Error] {e}")
 
     def load(self):
         # Migration check: handle change from hypervector_memory.pt to agent_brain.pt
         target_file = self.filename
-        legacy_pt = "memories/hypervector_memory.pt"
+        legacy_pt = os.path.join(config.RUNTIME_ROOT, "memories", "hypervector_memory.pt")
         if not os.path.exists(target_file) and os.path.exists(legacy_pt):
             print(f"[*] Upgrading storage from {legacy_pt} to {target_file}...")
             target_file = legacy_pt
@@ -353,7 +398,7 @@ class HypervectorDB:
         self.reasoning_lessons = data.get("reasoning_lessons", [])
 
         # Specific migration for Knowledge Graph JSON
-        kg_json = "memories/knowledge_graph.json"
+        kg_json = os.path.join(config.RUNTIME_ROOT, "memories", "knowledge_graph.json")
         if not self.graph_data and os.path.exists(kg_json):
             print(f"[*] Migrating Knowledge Graph from {kg_json}...")
             try:
@@ -364,7 +409,7 @@ class HypervectorDB:
                 print(f"[Graph Migration Error] {e}")
 
         # Specific migration for Legacy Memory JSON
-        memory_json = "memories/hypervector_memory.json"
+        memory_json = os.path.join(config.RUNTIME_ROOT, "memories", "hypervector_memory.json")
         if not self.documents and os.path.exists(memory_json):
             print(f"[*] Migrating legacy memory from {memory_json}...")
             try:

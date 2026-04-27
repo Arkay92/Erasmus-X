@@ -1,6 +1,7 @@
 # Elite V10 Deterministic Template Store
 import os
 import json
+import re
 
 PACKS_DIR = os.path.join(os.path.dirname(__file__), 'packs')
 
@@ -123,16 +124,37 @@ def get_best_skeleton_from_brain(filename, brain, stack_context=""):
         return None
         
     # 2. Deterministic registry lookup (O(1), no HDC search needed)
-    pack = brain.get_feature_pack(target_feature)
+    pack = None
+    if hasattr(brain, 'get_feature_pack'):
+        candidate = brain.get_feature_pack(target_feature)
+        if isinstance(candidate, dict):
+            pack = candidate
+
+    # 3. Backward-compatible semantic lookup for older brain stores/tests.
+    if not pack and hasattr(brain, 'search'):
+        query = f"[FEATURE_PACK] FEATURE: {target_feature}"
+        results = brain.search(query)
+        for _, doc in results or []:
+            match = re.search(r"CONTENT:\s*(\{.*\})", str(doc), re.DOTALL)
+            if not match:
+                continue
+            try:
+                candidate = json.loads(match.group(1))
+                if isinstance(candidate, dict):
+                    pack = candidate
+                    break
+            except json.JSONDecodeError:
+                continue
+
     if not pack:
         return None
     
-    # 3. Find the specific file within the pack
+    # 4. Find the specific file within the pack
     for f in pack.get('files', []):
         if f['path'].lower() in fn_low or fn_low in f['path'].lower():
             return f
     
-    # 4. Fallback: return the first file's content as a generic seed
+    # 5. Fallback: return the first file's content as a generic seed
     if pack.get('files'):
         return {"content": pack['files'][0].get('content', '')}
     return None

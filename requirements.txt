@@ -1,0 +1,6 @@
+ddgs
+networkx
+openai
+torch
+torch-hd
+transformers

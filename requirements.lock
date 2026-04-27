@@ -1,0 +1,6 @@
+ddgs==9.5.5
+networkx==3.4.2
+openai==1.99.9
+torch==2.7.1
+torch-hd==5.8.0
+transformers==4.55.0

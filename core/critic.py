@@ -1,5 +1,8 @@
+import json
 import os
+import re
 from core import config
+from core.import_resolver import find_unresolved_relative_imports
 
 class BuildCritic:
     def __init__(self, client):
@@ -8,6 +11,9 @@ class BuildCritic:
     def evaluate(self, user_input, contract, file_map):
         """Separate LLM pass to score the project quality."""
         print("[*] V12 Phase: Running Critic Evaluation...")
+        deterministic_report = self._deterministic_preflight(contract, file_map)
+        if deterministic_report:
+            return deterministic_report
         
         # Build Context for Critic (V17.1 Context Guarding)
         context = ""
@@ -57,10 +63,54 @@ If perfect, output: SCORE: 100
 """
         
         response = self.client.chat.completions.create(
-            model=config.MODEL_NAME,
+            model=config.AGENT_MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1
         )
         
         raw = response.choices[0].message.content
         return raw
+
+    def _deterministic_preflight(self, contract, file_map):
+        """Return precise repair targets for obvious issues before LLM review."""
+        targets = []
+        for critical in contract.get('critical_files', []):
+            if critical not in file_map:
+                targets.append({
+                    "file": critical,
+                    "reason": "Critical file required by the capability contract is missing from disk."
+                })
+
+        placeholder_patterns = [
+            r"\bTODO\b",
+            r"placeholder",
+            r"not implemented",
+            r"throw new Error\(['\"]not implemented",
+            r"pass\s*(#.*)?$",
+        ]
+        for name, content in file_map.items():
+            lowered = content.lower()
+            if any(re.search(pattern, lowered, re.IGNORECASE | re.MULTILINE) for pattern in placeholder_patterns):
+                targets.append({
+                    "file": name,
+                    "reason": "File contains placeholder or unimplemented logic; replace with production behavior."
+                })
+            if name.endswith(('.ts', '.tsx', '.js', '.jsx')):
+                unresolved = find_unresolved_relative_imports(name, content, set(file_map))
+                for item in unresolved:
+                    targets.append({
+                        "file": name,
+                        "reason": f"Unresolved relative import '{item}'. Add the target file or fix the import path."
+                    })
+
+        if not targets:
+            return None
+
+        return (
+            "SCORE: 70\n"
+            "VIOLATIONS:\n"
+            + "\n".join(f"- {t['file']}: {t['reason']}" for t in targets)
+            + "\n\n[REPAIR: JSON]\n"
+            + json.dumps({"targets": targets}, indent=2)
+            + "\n[/REPAIR]"
+        )

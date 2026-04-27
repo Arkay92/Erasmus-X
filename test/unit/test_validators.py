@@ -34,5 +34,16 @@ class TestValidators(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("JSON", err)
 
+    def test_php_validator_accepts_basic_php_file(self):
+        code = "<?php\n\nfunction reply(string $message): string {\n    return $message;\n}\n"
+        ok, err = self.registry.validate("src/Bot.php", code)
+        self.assertTrue(ok, err)
+
+    def test_pluggable_stack_validator_rejects_nextjs_contract_break(self):
+        code = "export default function RootLayout({ children }) { return <main>{children}</main>; }"
+        ok, err = self.registry.validate("app/layout.tsx", code, {"available_files": {"app/layout.tsx"}, "stack": "nextjs"})
+        self.assertFalse(ok)
+        self.assertIn("Next.js", err)
+
 if __name__ == '__main__':
     unittest.main()

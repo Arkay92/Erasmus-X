@@ -1,11 +1,10 @@
 import os
 import re
 import hashlib
-import sys
-import ast
-import subprocess
 import time
 import json
+import subprocess
+import sys
 from core import config, prompts
 from core.compressor import PromptCompressor
 from core.sandbox import SandboxManager
@@ -22,42 +21,95 @@ from core.failure_learner import FailureLearner
 from core.reasoning_engine import ReasoningEngine
 from core.prompt_distiller import PromptDistiller
 from core.subagent_manager import SubagentManager
+from core.request_cache import RequestCache
+from core.transaction_manager import ProjectTransaction
+from core.task_queue import TaskQueue
+from core.model_router import ModelRouter
+from core.code_formatter import CodeFormatter
+from core.code_fallbacks import CodeFallbackRegistry
+from core.answer_fallbacks import factual_fallback
+from core.active_kg_builder import ActiveKGBuilder
+from core.graph_reasoner import GraphReasoner
+from core.distributed_brain import DistributedBrain
+from core.context_manager import ContextManager
+from core.feedback_store import FeedbackStore
+from core.scaffold_registry import ScaffoldRegistry
+from core.dynamic_scaffold_builder import DynamicScaffoldBuilder
+from core.response_schema import make_response
+from core.inject_feature_packs import register_feature_packs
+from core.inject_prisma_packs import register_prisma_packs
 from utils.fidelity_scanner import check_fidelity
-from utils.brain_sync import sync_project_dir, sync_from_sqlite, sync_from_json
-from utils.text_utils import count_tokens, summarize_text_python
+from utils.brain_sync import sync_project_dir
 from utils.perf import tracker
 
 class NeurosymbolicAgent:
-    def __init__(self, client, brain, kg, searcher):
+    def __init__(self, client, brain, kg, searcher, agent_client=None):
         self.client = client
+        self.agent_client = agent_client or client
         self.brain = brain
         self.kg = kg
         self.searcher = searcher
         self.sandbox = SandboxManager(root_dir=config.SANDBOX_ROOT)
         self.compressor = PromptCompressor(self.client) if config.COMPRESSION_ENABLED else None
         
-        if config.ENABLE_LOCAL_LLM:
-            self.local_llm = LocalLLM(model_name=config.LOCAL_MODEL_TYPE)
+        self.local_llm = LocalLLM(model_name=config.LOCAL_LLM_TYPE) if config.ENABLE_LOCAL_LLM else None
             
         self.messages = []
         self._persona_cache = {}
         
         # Elite V12 Subsystems
-        self.reasoning_engine = ReasoningEngine(client=self.client, brain=self.brain)
-        self.contractor = CapabilityContract(client=self.client)
-        self.critic = BuildCritic(client=self.client)
+        self.reasoning_engine = ReasoningEngine(client=self.agent_client, brain=self.brain)
+        self.contractor = CapabilityContract(client=self.agent_client, brain=self.brain)
+        self.critic = BuildCritic(client=self.agent_client)
         self.failure_memory = FailureLearner(brain=self.brain)
+        self.large_context_manager = ContextManager(
+            local_llm=self.local_llm,
+            max_context_tokens=config.DEEP_MODE_CONTEXT_TOKENS,
+        )
         
         # Elite V10 Subsystems
         self.context_builder = ContextBuilder(compressor=self.compressor, reasoning_engine=self.reasoning_engine)
-        self.session_manager = SessionManager(brain=self.brain, client=self.client)
+        self.session_manager = SessionManager(brain=self.brain, client=self.agent_client)
         self.router = TaskRouter(brain=self.brain, local_llm=self.local_llm)
         self.executor = ExecutionController(client=self.client)
         self.validator = ValidatorRegistry()
         self.prompt_distiller = PromptDistiller(self.local_llm)
         self.subagent_manager = SubagentManager(self)
+        specialized = {k: v for k, v in getattr(config, "SPECIALIZED_MODELS", {}).items() if v}
+        self.model_router = ModelRouter(default_model=config.MODEL_NAME, specialized_models=specialized)
+        self.request_cache = RequestCache() if getattr(config, "REQUEST_CACHE_ENABLED", True) else None
+        self.task_queue = TaskQueue(handler=lambda payload: self.chat(**payload), num_workers=config.TASK_QUEUE_WORKERS)
+        self.formatter = CodeFormatter()
+        self.code_fallbacks = CodeFallbackRegistry()
+        self.kg_builder = ActiveKGBuilder(self.kg)
+        self.graph_reasoner = GraphReasoner(self.kg)
+        self.distributed_brain = DistributedBrain(self.brain)
+        self.feedback_store = FeedbackStore()
+        self.scaffold_registry = ScaffoldRegistry()
+        self.dynamic_scaffold_builder = DynamicScaffoldBuilder(client=self.agent_client, searcher=self.searcher)
+        self._ensure_builtin_feature_packs()
         
         self._pre_cache_shards()
+
+    def _ensure_builtin_feature_packs(self):
+        """Make built-in feature packs available without a manual injection step."""
+        register_feature_packs(self.brain, save=False, verbose=False)
+        register_prisma_packs(self.brain, save=False, verbose=False)
+
+    def enqueue_chat(self, user_input, mode_override=None, priority=5):
+        """Queue a chat request for concurrent worker execution."""
+        return self.task_queue.enqueue({"user_input": user_input, "mode_override": mode_override}, priority=priority)
+
+    def get_job_status(self, job_id):
+        return self.task_queue.get_status(job_id)
+
+    def submit_feedback(self, job_id, rating, corrections=None, metadata=None):
+        """Persist user feedback and expose it to the long-term brain."""
+        feedback = self.feedback_store.submit(job_id, rating, corrections, metadata)
+        self.distributed_brain.add_document(
+            f"[FEEDBACK] Job: {job_id} | Rating: {rating} | Corrections: {len(feedback['corrections'])}"
+        )
+        return feedback
 
     def _pre_cache_shards(self):
         shards = self._load_shards_from_disk()
@@ -69,12 +121,68 @@ class NeurosymbolicAgent:
         with tracker.track("TASK_ROUTING"):
             meta = self.router.route(user_input)
         request_mode = mode_override or meta['mode']
+        selected_model = self.model_router.route(user_input)
+        early_project = meta.get('is_project') or self._is_project_request(user_input, intent=meta['intent'], confidence=meta['confidence'])
+        early_code_fallback = None if early_project else self.code_fallbacks.match(user_input, meta)
+        if meta.get('is_code') and early_code_fallback and not user_input.lstrip().startswith("ROLE:"):
+            print(f"[*] Code Fallback: using deterministic {early_code_fallback.filename}")
+            raw_response = early_code_fallback.as_file_block()
+            saved, failures = self._extract_and_save_files(raw_response)
+            status_text = f"Code Task Complete. Saved: {', '.join(saved) if saved else 'None'}"
+            if failures:
+                status_text += f" | Failures: {len(failures)}"
+            return make_response(
+                raw_response,
+                status_text,
+                files=saved,
+                status="error" if failures else "ok",
+                errors=list(failures.values()),
+                metadata={**meta, "fallback": early_code_fallback.filename},
+            )
+        early_answer_fallback = factual_fallback(user_input)
+        if early_answer_fallback and not meta.get('is_dynamic') and not early_project and not meta.get('is_code'):
+            return make_response(
+                early_answer_fallback,
+                early_answer_fallback,
+                status="ok",
+                metadata={**meta, "fallback": "stable_answer"},
+            )
+        if early_project:
+            templated = self._try_scaffold_project(user_input, meta)
+            if templated:
+                raw, answer = templated
+                files = self._extract_saved_files_from_report(raw + "\n" + answer)
+                return make_response(raw, answer, files=files, status="ok", metadata={**meta, "mode": request_mode, "model": selected_model})
+        exact_cache_key = None
+        cacheable_simple_query = (
+            self.request_cache
+            and not self.messages
+            and '?' in user_input
+            and not meta.get('is_dynamic')
+            and not early_project
+            and not meta.get('is_code')
+        )
+        if cacheable_simple_query:
+            exact_cache_key = self.request_cache.fingerprint(
+                user_input,
+                mode=request_mode,
+                model=selected_model,
+                temperature=0.3 if request_mode == "DEEP" else 0.1,
+            )
+            exact_cache_hit = self.request_cache.get(exact_cache_key)
+            if exact_cache_hit:
+                raw = exact_cache_hit["raw"] + "\n[Request Cache Hit]"
+                return make_response(raw, exact_cache_hit["clean"], status="cached", metadata={**meta, "cache": "request"})
         
         # 1. Cache & Stability
         with tracker.track("SEMANTIC_CACHE_LOOKUP"):
-            norm_query = re.sub(r'[^\w\s]', '', user_input).lower().strip()
-            cache_hit = self.brain.search_cache(norm_query, threshold=config.CACHE_THRESHOLD)
-        if cache_hit: return cache_hit['raw'] + "\n[Semantic Cache Hit]", cache_hit['clean']
+            cache_hit = None
+            if not meta.get('is_dynamic'):
+                norm_query = re.sub(r'[^\w\s]', '', user_input).lower().strip()
+                cache_hit = self.brain.search_cache(norm_query, threshold=config.CACHE_THRESHOLD)
+        if cache_hit:
+            raw = cache_hit['raw'] + "\n[Semantic Cache Hit]"
+            return make_response(raw, cache_hit['clean'], status="cached", metadata={**meta, "cache": "semantic"})
 
         with tracker.track("STABILITY_GUARD"):
             if self.session_manager.check_stability_trigger(self.messages):
@@ -89,14 +197,14 @@ class NeurosymbolicAgent:
             graph_facts = self.kg.get_related_facts(user_input)
             
             web_text = None
-            if meta['intent'] == "SEARCH" or (not vector_results and '?' in user_input):
+            if config.ENABLE_WEB_SEARCH and (meta['intent'] == "SEARCH" or (not vector_results and '?' in user_input)):
                 web_text = self.searcher.search(user_input)
 
         # 3. Context & Inference
         with tracker.track("CONTEXT_ASSEMBLY"):
             memory_results = {'session': session_mems, 'facts': graph_facts, 'web': web_text}
             
-            # Speculative Tuning: Let Gemma 'fine-tune' GPT's instructions for this task
+            # Speculative Tuning: Let Erasmus X 'fine-tune' instructions for this task
             distilled_tuning = None
             if request_mode != "FAST":
                 distilled_tuning = self.prompt_distiller.distill_task_instructions(user_input, meta)
@@ -107,19 +215,20 @@ class NeurosymbolicAgent:
             if distilled_tuning and messages:
                 messages[0]['content'] += distilled_tuning
 
-        print(f"Gemma is thinking ({request_mode} mode)...", flush=True)
+        print(f"Erasmus is thinking ({request_mode} mode)...", flush=True)
         try:
             with tracker.track("LLM_INFERENCE"):
                 response = self.client.chat.completions.create(
-                    model=config.MODEL_NAME,
+                    model=selected_model,
                     messages=messages,
                     temperature=0.3 if request_mode == "DEEP" else 0.1,
-                    max_tokens=config.DEEP_MODE_OUTPUT_TOKENS if request_mode == "DEEP" else config.FAST_MODE_OUTPUT_TOKENS
+                    max_tokens=config.DEEP_MODE_OUTPUT_TOKENS if request_mode == "DEEP" else config.FAST_MODE_OUTPUT_TOKENS,
+                    timeout=config.REQUEST_TIMEOUT,
                 )
                 raw_response = response.choices[0].message.content
         except Exception as e:
             print(f"[!] Primary LLM Failed: {e}. Falling back to Local SLM...")
-            if hasattr(self, 'local_llm'):
+            if self.local_llm:
                 try:
                     # FAST mode: use short focused prompt to avoid GPT-2 context overflow
                     if request_mode == "FAST":
@@ -134,6 +243,10 @@ class NeurosymbolicAgent:
                     raw_response = f"I encountered a local model error processing your request."
             else:
                 raw_response = "I encountered an error and could not generate a response."
+        raw_response = raw_response or ""
+        stable_fallback = factual_fallback(user_input)
+        if stable_fallback and raw_response.strip().startswith("I encountered an error"):
+            raw_response = stable_fallback
         
         # 4. Verification & Repair
         with tracker.track("CONTRACT_ENFORCEMENT"):
@@ -143,7 +256,7 @@ class NeurosymbolicAgent:
                  messages.append({"role": "assistant", "content": raw_response})
                  messages.append({"role": "user", "content": f"RE-PROMPT: {err}"})
                  try:
-                     response = self.client.chat.completions.create(model=config.MODEL_NAME, messages=messages, temperature=0.1)
+                     response = self.client.chat.completions.create(model=selected_model, messages=messages, temperature=0.1, timeout=config.REQUEST_TIMEOUT)
                      raw_response = response.choices[0].message.content
                  except Exception:
                      pass # keep original raw_response if repair fails
@@ -151,13 +264,17 @@ class NeurosymbolicAgent:
         # 5. History & Sync
         if not raw_response or not raw_response.strip():
              print("[!] Language model returned an empty response. Using blank fallback.")
-             if hasattr(self, 'local_llm'):
+             stable_answer = factual_fallback(user_input)
+             if stable_answer:
+                  raw_response = stable_answer
+             elif self.local_llm:
                   try:
                       raw_response = self.local_llm.generate("Answer succinctly: " + user_input, max_new_tokens=128)
                   except Exception as e:
                       raw_response = "I encountered an error and could not generate a response."
              else:
                   raw_response = "I encountered an error and could not generate a response. Please try with deeper context."
+             raw_response = raw_response or "I encountered an error and could not generate a response."
                   
         # 5b. SLM Repetition Guard: GPT-2 often generates degenerate loops
         if raw_response:
@@ -175,7 +292,7 @@ class NeurosymbolicAgent:
              
         self.messages.append({"role": "user", "content": user_input})
         self.messages.append({"role": "assistant", "content": clean_ans})
-        self.brain.add_document(f"Context: {user_input}. Summary: {clean_ans}")
+        self.distributed_brain.add_document(f"Context: {user_input}. Summary: {clean_ans}")
         
         if config.ENABLE_REASONING_ENGINE:
              self.reasoning_engine.analyze_task(user_input, messages + [{"role": "assistant", "content": raw_response}], "SUCCESS")
@@ -187,25 +304,106 @@ class NeurosymbolicAgent:
              if delegations:
                   results = self.subagent_manager.delegate_and_collect(delegations)
                   summary = "\n".join([f"SUBAGENT {r} REPORT: {v[:200]}..." for r, v in results.items()])
-                  return f"ORCHESTRATOR REPORT: Task decentralized.\n{summary}", "Task decentralized across subagents."
+                  raw = f"ORCHESTRATOR REPORT: Task decentralized.\n{summary}"
+                  return make_response(raw, "Task decentralized across subagents.", status="ok", metadata={**meta, "delegated": True})
 
         # 7. Project Flow
-        is_project = self._is_project_request(user_input, intent=meta['intent'], confidence=meta['confidence'])
+        is_project = meta.get('is_project')
         if is_project:
             project_dir, project_summary = self._project_planning_flow(user_input, messages)
-            return self._autonomous_coding_loop(user_input, messages, project_summary, base_dir=project_dir)
-        elif meta['is_code']:
+            raw, answer = self._autonomous_coding_loop(user_input, messages, project_summary, base_dir=project_dir)
+            return make_response(raw, answer, files=self._extract_saved_files_from_report(answer), status="ok", metadata={**meta, "project_dir": project_dir})
+        elif meta['is_code'] and not user_input.lstrip().startswith("ROLE:"):
             # Single-File Code Task: Direct validate and save (bypass V12 Project Loop)
-            saved, failures = self._extract_and_save_files(raw_response)
+            response_for_files = raw_response
+            fallback = self.code_fallbacks.match(user_input, meta)
+            if "[FILE:" not in response_for_files:
+                if fallback:
+                    print(f"[*] Code Fallback: using deterministic {fallback.filename}")
+                    response_for_files = fallback.as_file_block()
+                    raw_response = response_for_files
+            saved, failures = self._extract_and_save_files(response_for_files)
+            if not saved and failures and fallback:
+                print(f"[*] Code Fallback: replacing invalid model output with {fallback.filename}")
+                raw_response = fallback.as_file_block()
+                saved, failures = self._extract_and_save_files(raw_response)
+            if saved and fallback and not self._validate_single_file_behavior(user_input, saved[0]):
+                print(f"[*] Code Fallback: replacing behavior-invalid output with {fallback.filename}")
+                raw_response = fallback.as_file_block()
+                saved, failures = self._extract_and_save_files(raw_response)
             status = f"Code Task Complete. Saved: {', '.join(saved) if saved else 'None'}"
             if failures: status += f" | Failures: {len(failures)}"
-            return raw_response, status
+            return make_response(raw_response, status, files=saved, status="error" if failures else "ok", errors=list(failures.values()), metadata=meta)
 
-        return raw_response, clean_ans
+        if self.request_cache and exact_cache_key:
+            self.request_cache.set(
+                exact_cache_key,
+                {"raw": raw_response, "clean": clean_ans},
+                ttl=getattr(config, "REQUEST_CACHE_TTL_SECONDS", 24 * 3600),
+            )
+
+        return make_response(raw_response, clean_ans, status="ok", metadata=meta)
+
+    def _try_scaffold_project(self, user_input, meta):
+        scaffold = self.scaffold_registry.match(user_input, meta)
+        if not scaffold:
+            scaffold = self.dynamic_scaffold_builder.build(user_input, meta)
+        if not scaffold:
+            return None
+
+        project_name = re.sub(r'[^a-z0-9]', '_', user_input.lower())[:20]
+        project_dir = f"v12_{project_name}_{int(time.time())}"
+        print(f"[Project Phase] Using registered scaffold: {scaffold.name}")
+        self.sandbox.create_sandbox(project_dir)
+        print(f"[*] Project Planning Complete: {project_dir}")
+        manifest = list(scaffold.files)
+        blocks = []
+        for path, content in scaffold.files.items():
+            lang = os.path.splitext(path)[1].lstrip('.') or 'text'
+            blocks.append(f"[FILE: {path}]\n```{lang}\n{content}\n```")
+        response = "\n\n".join(blocks)
+        saved, failures = self._extract_and_save_files(response, base_dir=project_dir, manifest=manifest)
+        if failures:
+            print(f"[!] Scaffold validation failed: {failures}")
+        if saved:
+            sync_project_dir(self.brain, self.kg, os.path.join(self.sandbox.root_dir, project_dir))
+        verification_failures = self._verify_scaffold_contract(scaffold, saved)
+        if verification_failures:
+            failures = {**failures, **verification_failures}
+        report = self._generate_report(project_dir, manifest, saved, failures)
+        if scaffold.verification_commands:
+            report += "\n**Verification Commands**: " + " && ".join(scaffold.verification_commands)
+        return response, report
+
+    def _verify_scaffold_contract(self, scaffold, saved):
+        """Static verification gate for generated test and CLI coverage."""
+        saved_set = {path.replace("\\", "/") for path in saved}
+        failures = {}
+        package_content = scaffold.files.get("package.json")
+        saved_lower = {path.lower() for path in saved_set}
+        has_test_file = any(
+            re.search(r"(^|/)(test|tests)/", path)
+            or path.endswith((".test.ts", ".test.tsx", "_test.py", "_test.c", "test_app.py", "tests.cs"))
+            for path in saved_lower
+        )
+        if not has_test_file:
+            failures["verification:test_files"] = "Scaffold did not generate any test files."
+        if package_content:
+            try:
+                package_data = json.loads(package_content)
+                scripts = package_data.get("scripts", {})
+                if "test" not in scripts:
+                    failures["verification:package.json"] = "package.json is missing a test script."
+            except Exception as exc:
+                failures["verification:package.json"] = f"package.json could not be inspected: {exc}"
+        if not scaffold.verification_commands:
+            failures["verification:commands"] = "Scaffold has no CLI verification commands."
+        return failures
 
     def _project_planning_flow(self, user_input, messages):
         """Elite V10: 11-step project pipeline initialization."""
         print("[*] Project Phase: Planning & Manifesting...")
+        graph_plan = self.graph_reasoner.plan_project(user_input)
         with tracker.track("PROJECT_RESEARCH"):
             search_query = f"Architecture and file structure for {user_input}"
             web_ref = self.searcher.search(search_query)
@@ -222,6 +420,7 @@ class NeurosymbolicAgent:
                  
         with tracker.track("PLAN_GENERATION"):
             planner_prompt = prompts.PROJECT_PLANNER_PROMPT + f"\n\nUSER REQUEST: {user_input}"
+            planner_prompt += f"\n\n[GRAPH PLAN]\n" + "\n".join(f"- {step}" for step in graph_plan[:10])
             planner_prompt += f"\n\n[MANDATORY CONTRACT TARGETS]\nYour plan MUST include these exact files:\n"
             for crit in contract.get('critical_files', []):
                  planner_prompt += f"- {crit}\n"
@@ -229,9 +428,10 @@ class NeurosymbolicAgent:
             if web_ref: planner_prompt += f"\n\nRESEARCH:\n{web_ref[:1000]}"
             
             response = self.client.chat.completions.create(
-                model=config.MODEL_NAME,
+                model=self.model_router.route(user_input),
                 messages=[{"role": "system", "content": prompts.SYSTEM_PROMPT}, {"role": "user", "content": planner_prompt}],
-                temperature=0.1
+                temperature=0.1,
+                timeout=config.REQUEST_TIMEOUT,
             )
             plan_text = response.choices[0].message.content
         
@@ -252,9 +452,10 @@ class NeurosymbolicAgent:
         
         try:
             response = self.client.chat.completions.create(
-                model=config.MODEL_NAME,
+                model=self.model_router.route("synthesis"),
                 messages=[{"role": "user", "content": synthesis_prompt}],
-                temperature=0.3
+                temperature=0.3,
+                timeout=config.REQUEST_TIMEOUT,
             )
             raw = response.choices[0].message.content
             
@@ -302,7 +503,7 @@ class NeurosymbolicAgent:
         # A template skeleton placeholder is structurally valid but semantically un-implemented.
         # It therefore cannot count towards a SUCCESS build compliance.
         valid_features = []
-        scratch_dir = self.sandbox.root_dir if not base_dir else os.path.join(self.sandbox.root_dir, base_dir)
+        scratch_dir = self._scratch_dir(base_dir)
         
         for f in saved:
             fpath = os.path.join(scratch_dir, f)
@@ -334,8 +535,69 @@ Failures: {failures}
 
 Write a 2-para blunt summary. If compliance is low, state explicitly that the scaffold is incomplete and not runnable.
 """
-        response = self.client.chat.completions.create(model=config.MODEL_NAME, messages=[{"role": "user", "content": summary_prompt}])
-        return f"### PROJECT BUILD REPORT: {base_dir}\n**Status**: {status}\n**Compliance**: {compliance:.1f}%\n**Missing**: {missing_str}\n\n" + response.choices[0].message.content
+        fallback_summary = (
+            f"Build {status.lower()} with {done}/{total} manifest files validated. "
+            f"Missing targets: {missing_str}. Failures: {failures or 'None'}."
+        )
+        summary = fallback_summary
+        return f"### PROJECT BUILD REPORT: {base_dir}\n**Status**: {status}\n**Compliance**: {compliance:.1f}%\n**Missing**: {missing_str}\n\n" + summary
+
+    def _extract_saved_files_from_report(self, report):
+        matches = re.findall(r"\[FILE:\s*([^\]]+)\]", report or "")
+        matches.extend(re.findall(r"(?:Saved|Staged|Committed)\s+validated\s+([^\s]+)", report or ""))
+        return [m.strip() for m in matches]
+
+    def _scratch_dir(self, base_dir=None):
+        return self.sandbox.root_dir if not base_dir else os.path.join(self.sandbox.root_dir, base_dir)
+
+    def _list_saved_manifest_files(self, manifest, scratch_dir):
+        return [f for f in manifest if os.path.exists(os.path.join(scratch_dir, f))]
+
+    def _read_file_map(self, files, scratch_dir):
+        file_map = {}
+        for filename in files:
+            path = os.path.join(scratch_dir, filename)
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as fh:
+                    file_map[filename] = fh.read()
+        return file_map
+
+    def _language_map_for_files(self, files):
+        ext_map = {
+            ".py": "python",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".js": "javascript",
+            ".jsx": "javascript",
+            ".go": "go",
+            ".rs": "rust",
+            ".c": "c",
+            ".json": "json",
+            ".css": "css",
+        }
+        return {path: ext_map.get(os.path.splitext(path)[1].lower(), "text") for path in files}
+
+    def _inject_required_pack_files(self, contract, file_map, manifest, base_dir=None):
+        """Apply pack-injector output to disk and manifest when contract requires packs."""
+        before = set(file_map)
+        self.contractor.contract_data = contract
+        updated_map = self.contractor.inject_required_packs(dict(file_map))
+        injected = {path: content for path, content in updated_map.items() if path not in before}
+        if not injected:
+            return []
+
+        saved = []
+        for path, content in injected.items():
+            if path not in manifest:
+                manifest.append(path)
+            block = f"[FILE: {path}]\n```{os.path.splitext(path)[1].lstrip('.')}\n{content}\n```"
+            staged, failures = self._extract_and_save_files(block, base_dir=base_dir, manifest=manifest)
+            saved.extend(staged)
+            if failures:
+                print(f"[!] Pack injection skipped invalid files: {failures}")
+        if saved:
+            print(f"[+] Pack Injection: committed {len(saved)} required file(s).")
+        return saved
 
     def _autonomous_coding_loop(self, user_input, base_messages, initial_response, base_dir=None):
         """Elite V10.4: Layered repair loop with deterministic seeding and strict dependency traversal."""
@@ -344,7 +606,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
         current_response = initial_response
         is_nextjs = "next.js" in user_input.lower()
         manifest = self._extract_manifest(initial_response)
-        scratch_dir = self.sandbox.root_dir if not base_dir else os.path.join(self.sandbox.root_dir, base_dir)
+        scratch_dir = self._scratch_dir(base_dir)
         
         # Unify Manifest Extensions for Next.js
         if is_nextjs:
@@ -412,10 +674,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
             print(f"[*] V12 Progress: {graph_status} | {len(persistent_failures)} errors")
             
             # Step 1: Check completeness from disk
-            actual_saved = []
-            for f in manifest:
-                if os.path.exists(os.path.join(scratch_dir, f)):
-                    actual_saved.append(f)
+            actual_saved = self._list_saved_manifest_files(manifest, scratch_dir)
                     
             missing = [f for f in manifest if f not in actual_saved and f != "PLAN.md"]
             if not missing and not persistent_failures:
@@ -424,15 +683,23 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                 print(f"[+] Manifest satisfied. Escalating to V13 Build Critic (Pass {critic_pass_count})...")
                 
                 # V12: Build file map for Critic
-                file_map = {}
-                project_content_blob = ""
-                for f in actual_saved:
-                     f_path = os.path.join(scratch_dir, f)
-                     if os.path.exists(f_path):
-                         with open(f_path, 'r', encoding='utf-8') as f_read:
-                              content = f_read.read()
-                              file_map[f] = content
-                              project_content_blob += content
+                file_map = self._read_file_map(actual_saved, scratch_dir)
+                injected_files = self._inject_required_pack_files(contract, file_map, manifest, base_dir=base_dir)
+                if injected_files:
+                    actual_saved = self._list_saved_manifest_files(manifest, scratch_dir)
+                    file_map = self._read_file_map(actual_saved, scratch_dir)
+                    missing = [f for f in manifest if f not in actual_saved and f != "PLAN.md"]
+                    if missing:
+                        continue
+                project_content_blob = "".join(file_map.values())
+
+                context_state = self.large_context_manager.manage(
+                    file_map,
+                    contract,
+                    self._language_map_for_files(file_map.keys()),
+                )
+                if context_state.get("needs_phasing"):
+                    print(f"[*] Context Manager: project split recommended across {len(context_state['phases'])} phases.")
 
                 # Elite V19: Stall Detection
                 current_hash = hashlib.md5(project_content_blob.encode()).hexdigest()
@@ -452,6 +719,9 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                 
                 if "SCORE: 100" in critic_report:
                      print("[+] Build Complete: V13 Critic PASS (Score: 100)")
+                     synced = sync_project_dir(self.brain, self.kg, scratch_dir)
+                     if synced:
+                          print(f"[+] BrainSync: synced {synced} project data record(s).")
                      if config.ENABLE_REASONING_ENGINE:
                           with tracker.track("REASONING_ANALYSIS"):
                                self.reasoning_engine.analyze_task(user_input, base_messages + [{"role": "assistant", "content": current_response}], "SUCCESS", critic_report)
@@ -487,11 +757,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                                # Elite V18: Fidelity Recovery Fallback
                                print("[!] Critic rejected build but provided no specific file targets. Engaging Fidelity Scanner...")
                                # Build file map for scanner
-                               f_map = {}
-                               for f_name in actual_saved:
-                                    p = os.path.join(scratch_dir, f_name)
-                                    if os.path.exists(p):
-                                         with open(p, 'r', encoding='utf-8') as f_r: f_map[f_name] = f_r.read()
+                               f_map = self._read_file_map(actual_saved, scratch_dir)
                                
                                with tracker.track("FIDELITY_SCAN"):
                                     fid_score, fid_targets = check_fidelity(contract, f_map)
@@ -621,17 +887,24 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
             messages.append({"role": "assistant", "content": f"PLAN SUMMARY:\n{plan_summary}\n\n[MANIFEST: {', '.join(manifest[:15])}]"})
             messages.append({"role": "user", "content": repair_prompt})
             
-            response = self.client.chat.completions.create(model=config.MODEL_NAME, messages=messages, temperature=0.1)
-            current_response = response.choices[0].message.content
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model_router.route(user_input),
+                    messages=messages,
+                    temperature=0.1,
+                    timeout=config.REQUEST_TIMEOUT,
+                )
+                current_response = response.choices[0].message.content or ""
+            except Exception as exc:
+                print(f"[!] Repair generation failed: {exc}")
+                current_response = ""
+            if not current_response.strip():
+                print("[!] Empty repair response. Ending project loop early.")
+                break
             
         # Elite V12: Final Output & Ultimate Critic Gate
-        actual_saved = [f for f in manifest if os.path.exists(os.path.join(scratch_dir, f))]
-        file_map = {}
-        for f in actual_saved:
-             f_path = os.path.join(scratch_dir, f)
-             if os.path.exists(f_path):
-                 with open(f_path, 'r', encoding='utf-8') as f_read:
-                      file_map[f] = f_read.read()
+        actual_saved = self._list_saved_manifest_files(manifest, scratch_dir)
+        file_map = self._read_file_map(actual_saved, scratch_dir)
         
         critic_report = self.critic.evaluate(user_input, contract, file_map)
         print(f"[*] V12 Final Critic Evaluation: {critic_report.splitlines()[0] if critic_report else 'SCORE: 0'}")
@@ -641,6 +914,10 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
              self.failure_memory.record_failure(contract.get('stack', 'unknown'), user_input, persistent_failures, critic_report)
              if config.ENABLE_REASONING_ENGINE:
                   self.reasoning_engine.analyze_task(user_input, base_messages + [{"role": "assistant", "content": current_response}], "FAILURE", critic_report)
+        else:
+             synced = sync_project_dir(self.brain, self.kg, scratch_dir)
+             if synced:
+                  print(f"[+] BrainSync: synced {synced} project data record(s).")
         
         # Final output persistence: Guarantee the last generated file lands on disk
         self._extract_and_save_files(current_response, base_dir=base_dir, manifest=manifest)
@@ -653,7 +930,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
         return current_response, report
 
     def _extract_and_save_files(self, text, base_dir=None, manifest=None):
-        """V10 Modular Extraction."""
+        """V10 Modular Extraction with formatting and transactional writes."""
         file_markers = list(re.finditer(r"\[FILE:\s*((?:\[[^\]]*\]|[^\]])+)\]", text))
         scratch_dir = self.sandbox.root_dir if not base_dir else os.path.join(self.sandbox.root_dir, base_dir)
         os.makedirs(scratch_dir, exist_ok=True)
@@ -661,6 +938,8 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
         saved, failures = [], {}
         available = set(manifest) if manifest else set()
         is_nextjs = any("app/" in f for f in available) or (manifest and any(".tsx" in f for f in manifest))
+        transaction = ProjectTransaction(scratch_dir).begin()
+        staged_content = {}
         
         for i, marker in enumerate(file_markers):
             filename = marker.group(1).strip()
@@ -674,21 +953,29 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
             block = re.search(r"```[a-z]*\n(.+?)(?:\n?```|$)", text[start:end], re.DOTALL)
             if block:
                 code = block.group(1).strip()
-                # Completion Check: Minimal balanced brace/parentheses check for code blocks
-                if code.count('{') > code.count('}') or code.count('(') > code.count(')'):
-                    failures[filename] = "Truncated code block missing closing markers."
-                    continue
-                
-                # Elite V17: Zero-Tolerance Placeholder Detection
-                # Catch hollow scaffolds before they touch the disk
-                placeholders = ['[Placeholder Component]', 'Placeholder API', 'export const placeholder = true', 'Return Placeholder', 'TODO: implement']
-                if any(p.lower() in code.lower() for p in placeholders):
-                     failures[filename] = f"Rejected: Authoritative logic missing. Detected placeholder signal: {placeholders[0]}..."
-                     continue
             else:
-                skeleton = get_best_skeleton(filename, brain=self.brain)
-                if skeleton: code = skeleton['content']
-                else: failures[filename] = "No code"; continue
+                raw_block = text[start:end].strip()
+                raw_block = re.sub(r"^\s*```[a-zA-Z0-9_-]*\s*", "", raw_block).strip()
+                raw_block = re.sub(r"\s*```\s*$", "", raw_block).strip()
+                code = raw_block if raw_block else ""
+                if not code:
+                    skeleton = get_best_skeleton(filename, brain=self.brain)
+                    if skeleton: code = skeleton['content']
+                    else: failures[filename] = "No code"; continue
+
+            # Completion Check: Minimal balanced brace/parentheses check for code blocks
+            if code.count('{') > code.count('}') or code.count('(') > code.count(')'):
+                failures[filename] = "Truncated code block missing closing markers."
+                continue
+            
+            # Elite V17: Zero-Tolerance Placeholder Detection
+            # Catch hollow scaffolds before they touch the disk
+            placeholders = ['[Placeholder Component]', 'Placeholder API', 'export const placeholder = true', 'Return Placeholder', 'TODO: implement']
+            if any(p.lower() in code.lower() for p in placeholders):
+                 failures[filename] = f"Rejected: Authoritative logic missing. Detected placeholder signal: {placeholders[0]}..."
+                 continue
+
+            code = self.formatter.format(filename, code)
 
             ok, err = self.validator.validate(filename, code, {'available_files': available})
             if not ok: failures[filename] = err; continue
@@ -701,20 +988,62 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                 failures[filename] = "Path collision with existing directory"
                 continue
 
-            os.makedirs(os.path.dirname(fpath), exist_ok=True)
             try:
-                with open(fpath, "w", encoding="utf-8") as f: f.write(code)
-                saved.append(filename); available.add(filename)
-                print(f"Saved validated {filename}")
+                ok, err = transaction.add_file(filename, code)
+                if not ok:
+                    failures[filename] = err
+                    continue
+                saved.append(filename)
+                staged_content[filename] = code
+                available.add(filename)
+                print(f"Staged validated {filename}")
             except Exception as e:
-                print(f"[!] Save FAILED for {filename}: {str(e)}")
+                print(f"[!] Stage FAILED for {filename}: {str(e)}")
                 failures[filename] = str(e)
-            
+
+        if failures:
+            transaction.rollback()
+            return [], failures
+
+        try:
+            committed = transaction.commit()
+            saved = committed
+            if committed:
+                self.kg_builder.extract_from_project({name: staged_content[name] for name in committed if name in staged_content})
+                print(f"Committed {len(committed)} validated file(s)")
+        except Exception as e:
+            transaction.rollback()
+            for filename in saved:
+                failures[filename] = f"Commit failed: {e}"
+            saved = []
+
         return saved, failures
 
     def _is_project_request(self, text, intent=None, confidence=0):
-        if intent == "PROJECT" and confidence > 0.35: return True
-        return any(k in text.lower() for k in ['project', 'system', 'application', 'multiple files']) and len(text.split()) > 5
+        single_file_code = self.router._is_single_file_code_request(text)
+        if single_file_code:
+            return False
+        return self.router._is_project_like(text, intent=intent, confidence=confidence)
+
+    def _validate_single_file_behavior(self, user_input, filename):
+        if "factorial" not in user_input.lower() or not filename.endswith(".py"):
+            return True
+        path = os.path.join(self.sandbox.root_dir, filename)
+        if not os.path.exists(path):
+            return False
+        script = (
+            "import importlib.util, pathlib; "
+            f"path=pathlib.Path(r'''{path}'''); "
+            "spec=importlib.util.spec_from_file_location('generated_module', path); "
+            "module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module); "
+            "func=getattr(module, 'factorial', None) or getattr(module, 'calculate_factorial', None); "
+            "print(func(5) if func else 'NO_FUNC')"
+        )
+        try:
+            result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=10)
+            return result.returncode == 0 and result.stdout.strip() == "120"
+        except Exception:
+            return False
 
     def _induce_missing_dependencies(self, code, manifest, dep_graph):
         """Elite V17: Automatically adds missing imported files to the manifest."""

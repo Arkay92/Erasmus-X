@@ -3,6 +3,7 @@ import re
 import subprocess
 import ast
 import json
+from core.validators.stack_validators import StackValidatorRegistry
 
 class BaseValidator:
     def validate_syntax(self, code, filename):
@@ -30,6 +31,9 @@ class PythonValidator(BaseValidator):
         # Elite V9: Deep Import Validation
         try:
             tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Raise) and node.exc is None:
+                    return False, "Bare raise detected outside explicit exception propagation."
             import sys
             std_libs = getattr(sys, "stdlib_module_names", set())
             if not std_libs:
@@ -51,6 +55,9 @@ class PythonValidator(BaseValidator):
             return False, f"Semantic analysis failed: {e}"
 
 class JSValidator(BaseValidator):
+    def __init__(self, stack_registry=None):
+        self.stack_registry = stack_registry or StackValidatorRegistry()
+
     def validate_syntax(self, code, filename):
         # Lightweight brace balancing if node is missing
         if code.count('{') != code.count('}') or code.count('(') != code.count(')'):
@@ -191,7 +198,7 @@ class JSValidator(BaseValidator):
         if 'placeholder = true' in code and 'lib/' in filename:
              return False, "Semantic Error: Library module is a hollow placeholder."
 
-        return True, "Valid Semantics"
+        return self.stack_registry.validate(filename, code, context)
 
 class RubyValidator(BaseValidator):
     def validate_syntax(self, code, filename):
@@ -206,6 +213,39 @@ class RustValidator(BaseValidator):
         if code.count('{') != code.count('}'):
              return False, "Imbalanced braces detected."
         return True, "Structural check pass"
+
+class CValidator(BaseValidator):
+    def validate_syntax(self, code, filename):
+        if code.count('{') != code.count('}'):
+             return False, "Imbalanced braces detected."
+        if code.count('(') != code.count(')'):
+             return False, "Imbalanced parentheses detected."
+        return True, "Structural check pass"
+
+class CSharpValidator(BaseValidator):
+    def validate_syntax(self, code, filename):
+        if code.count('{') != code.count('}'):
+             return False, "Imbalanced braces detected."
+        if code.count('(') != code.count(')'):
+             return False, "Imbalanced parentheses detected."
+        return True, "Structural check pass"
+
+class PHPValidator(BaseValidator):
+    def validate_syntax(self, code, filename):
+        if filename.endswith(".php") and "<?php" not in code:
+            return False, "PHP files must start with <?php."
+        if code.count('{') != code.count('}'):
+             return False, "Imbalanced braces detected."
+        if code.count('(') != code.count(')'):
+             return False, "Imbalanced parentheses detected."
+        return True, "Structural check pass"
+
+class TextValidator(BaseValidator):
+    def validate_syntax(self, code, filename):
+        if not code.strip():
+            return False, "Empty text file."
+        return True, "Text file present"
+
 class JSONValidator(BaseValidator):
     def validate_syntax(self, code, filename):
         try:

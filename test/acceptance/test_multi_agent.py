@@ -14,7 +14,7 @@ class TestMultiAgentAndDistiller(unittest.TestCase):
         self.mock_kg = MagicMock()
         self.mock_searcher = MagicMock()
         
-        # Mock Local LLM (Gemma Substitute)
+        # Mock Local LLM (Erasmus X Substitute)
         self.mock_local_llm = MagicMock()
         self.mock_brain.local_llm = self.mock_local_llm
         
@@ -33,8 +33,8 @@ class TestMultiAgentAndDistiller(unittest.TestCase):
         self.agent.prompt_distiller.local_llm = self.mock_local_llm
         self.agent.router.local_llm = self.mock_local_llm
 
-    def test_gemma_distiller_injection(self):
-        """Verify that Gemma's distillation output is injected into the prompt."""
+    def test_erasmus_distiller_injection(self):
+        """Verify that Erasmus X distillation output is injected into the prompt."""
         user_input = "Implement a high-performance DB layer"
         
         # Mocks
@@ -42,7 +42,7 @@ class TestMultiAgentAndDistiller(unittest.TestCase):
         self.mock_brain.classify_intent.return_value = ("PROJECT", 0.9)
         self.mock_brain.search.return_value = []
         
-        # Gemma's "Fine-Tuning" distillation
+        # Erasmus X "Fine-Tuning" distillation
         self.mock_local_llm.generate.return_value = "USE_INDEXING: TRUE. MINIMIZE_JOINS: TRUE."
         
         mock_resp = MagicMock()
@@ -59,7 +59,7 @@ class TestMultiAgentAndDistiller(unittest.TestCase):
              sent_messages = call[1]['messages']
              print(f"Call {i} messages: {sent_messages[0]['content'][:100]}...")
              for j, msg in enumerate(sent_messages):
-                  if "[SPECULATIVE CONSTRAINTS (Tuned by Gemma)]" in msg['content']:
+                  if "[SPECULATIVE CONSTRAINTS (Tuned by Erasmus X)]" in msg['content']:
                        print(f"Found distillation in call {i} message {j}")
                        self.assertIn("USE_INDEXING: TRUE", msg['content'])
                        found = True

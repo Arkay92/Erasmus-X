@@ -7,7 +7,7 @@ class PromptDistiller:
 
     def distill_task_instructions(self, user_input, meta):
         """
-        Uses Local SLM (Gemma) to generate task-specific constraints 
+        Uses Local SLM (Erasmus) to generate task-specific constraints 
         to 'tune' the main LLM's behavior without weight updates.
         """
         if not self.local_llm:
@@ -26,5 +26,5 @@ class PromptDistiller:
         if not raw_distillation:
             return ""
 
-        distilled_section = f"\n\n[SPECULATIVE CONSTRAINTS (Tuned by Gemma)]\n{raw_distillation}\n"
+        distilled_section = f"\n\n[SPECULATIVE CONSTRAINTS (Tuned by Erasmus X)]\n{raw_distillation}\n"
         return distilled_section

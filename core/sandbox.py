@@ -3,17 +3,17 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from core import config
+from core.runtime_paths import ensure_writable_dir
+
 class SandboxManager:
     """Manages isolated build environments for autonomous coding."""
     
     def __init__(self, root_dir=None):
         if not root_dir:
-            # Fallback to local 'sandboxes' folder
-            base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            root_dir = os.path.join(base_path, 'sandboxes')
-        
-        self.root_dir = root_dir
-        os.makedirs(self.root_dir, exist_ok=True)
+            root_dir = config.SANDBOX_ROOT
+
+        self.root_dir = ensure_writable_dir(root_dir, "sandboxes")
         print(f"[*] Sandbox Manager initialized at: {self.root_dir}")
 
     def create_sandbox(self, name):
@@ -30,7 +30,10 @@ class SandboxManager:
 
     def cleanup(self, sandbox_name):
         """Removes a sandbox directory."""
-        sandbox_path = os.path.join(self.root_dir, sandbox_name)
+        root_abs = os.path.abspath(self.root_dir)
+        sandbox_path = os.path.abspath(os.path.join(root_abs, sandbox_name))
+        if sandbox_path == root_abs or not sandbox_path.startswith(root_abs + os.sep):
+            raise ValueError(f"Refusing to clean path outside sandbox root: {sandbox_name}")
         if os.path.exists(sandbox_path):
             shutil.rmtree(sandbox_path)
             print(f"[*] Sandbox '{sandbox_name}' cleaned up.")

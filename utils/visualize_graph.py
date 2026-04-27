@@ -1,7 +1,12 @@
 import json
 import os
 
-def generate_visual_graph(graph_data=None, json_path="memories/knowledge_graph.json", html_output="memories/graph.html"):
+from core import config
+
+
+def generate_visual_graph(graph_data=None, json_path=None, html_output=None):
+    json_path = json_path or os.path.join(config.RUNTIME_ROOT, "memories", "knowledge_graph.json")
+    html_output = html_output or os.path.join(config.RUNTIME_ROOT, "memories", "graph.html")
     data = graph_data
     if data is None:
         if not os.path.exists(json_path):
@@ -39,7 +44,7 @@ def generate_visual_graph(graph_data=None, json_path="memories/knowledge_graph.j
 </head>
 <body>
     <div id="header">
-        <h1>Gemma Knowledge Graph</h1>
+        <h1>Erasmus X Knowledge Graph</h1>
         <p>Interactive Visualization of Learned Concepts</p>
     </div>
     <svg id="viz"></svg>
@@ -154,6 +159,7 @@ def generate_visual_graph(graph_data=None, json_path="memories/knowledge_graph.j
 </body>
 </html>
 """
+        os.makedirs(os.path.dirname(html_output), exist_ok=True)
         with open(html_output, "w", encoding="utf-8") as f:
             f.write(html_template)
             

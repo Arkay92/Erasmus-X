@@ -1,5 +1,5 @@
 import os
-from .base import PythonValidator, JSValidator, RubyValidator, RustValidator, JSONValidator
+from .base import CSharpValidator, CValidator, JSValidator, JSONValidator, PHPValidator, PythonValidator, RubyValidator, RustValidator, TextValidator
 
 class ValidatorRegistry:
     def __init__(self):
@@ -11,14 +11,24 @@ class ValidatorRegistry:
             '.tsx': JSValidator(),
             '.rb': RubyValidator(),
             '.rs': RustValidator(),
+            '.c': CValidator(),
+            '.h': CValidator(),
+            '.cs': CSharpValidator(),
+            '.csproj': TextValidator(),
+            '.sln': TextValidator(),
+            '.php': PHPValidator(),
             '.json': JSONValidator()
         }
         self.default_validator = JSValidator() # Baseline structural check
+        self.text_validator = TextValidator()
 
     def validate(self, filename, code, context=None):
         """Elite V10: Runs layered validation (Syntax -> Semantic)."""
         ext = os.path.splitext(filename)[1]
-        validator = self.validators.get(ext, self.default_validator)
+        if filename in {"Makefile", "Dockerfile"}:
+            validator = self.text_validator
+        else:
+            validator = self.validators.get(ext, self.default_validator)
         
         # Layer 1: Syntax
         ok, msg = validator.validate_syntax(code, filename)

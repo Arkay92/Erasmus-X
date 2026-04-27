@@ -8,9 +8,11 @@ class ReasoningEngine:
     def __init__(self, client, brain=None):
         self.client = client
         self.brain = brain
+        self.lessons = []
 
     def _save_lesson(self, lesson_obj):
         """Saves a reasoning lesson into the brain's deterministic registry."""
+        self.lessons.append(lesson_obj)
         if not self.brain: return
         self.brain.record_lesson(lesson_obj)
 
@@ -40,9 +42,10 @@ class ReasoningEngine:
 
         try:
             response = self.client.chat.completions.create(
-                model=config.MODEL_NAME,
+                model=config.AGENT_MODEL_NAME,
                 messages=[{"role": "user", "content": meta_prompt}],
-                temperature=0.1
+                temperature=0.1,
+                timeout=getattr(config, "REASONING_TIMEOUT", 5),
             )
             raw_analysis = response.choices[0].message.content
             
@@ -68,9 +71,10 @@ class ReasoningEngine:
 
     def get_relevant_lessons(self, query, limit=5):
         """Returns relevant lessons from the brain's deterministic registry."""
-        if not self.brain: return []
+        if not self.brain:
+            return [l['lesson'] for l in self.lessons[-limit:]]
         
-        lessons = self.brain.get_lessons(limit=limit)
+        lessons = self.brain.get_lessons(limit=limit) or self.lessons
         # Simple keyword relevance filter
         keywords = query.lower().split()
         relevant = []

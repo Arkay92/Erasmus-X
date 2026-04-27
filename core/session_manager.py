@@ -28,7 +28,7 @@ class SessionManager:
         
         try:
             response = self.client.chat.completions.create(
-                model=config.MODEL_NAME,
+                model=config.AGENT_MODEL_NAME,
                 messages=[{"role": "user", "content": summary_prompt}],
                 temperature=0.1,
                 max_tokens=400
