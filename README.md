@@ -1,7 +1,7 @@
 
 # Erasmus X — Autonomous Neurosymbolic Agent
 
-<img width="1254" height="1254" alt="0412b5b5-2f23-4ce3-880a-c71b919d53bc" src="https://github.com/user-attachments/assets/cda36b40-4794-4ecb-b59e-5676a301c896" />
+<img width="300" height="300" alt="0412b5b5-2f23-4ce3-880a-c71b919d53bc" src="https://github.com/user-attachments/assets/cda36b40-4794-4ecb-b59e-5676a301c896" />
 
 ## Overview
 
