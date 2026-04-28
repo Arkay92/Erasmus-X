@@ -2,6 +2,8 @@
   <center><h1>Erasmus X — Autonomous Neurosymbolic Agent</h1></center>
 </div>
 
+## Erasmus X is a modular self-improving AI engineer that researches, writes software, tests itself, stores knowledge, and expands with installable skill packs.
+
 <p align="center">
   <img width="300" height="300" alt="0412b5b5-2f23-4ce3-880a-c71b919d53bc" src="https://github.com/user-attachments/assets/cda36b40-4794-4ecb-b59e-5676a301c896" />
 </p>
