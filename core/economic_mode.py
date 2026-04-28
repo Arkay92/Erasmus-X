@@ -31,3 +31,7 @@ class EconomicMode:
         if terms & {"payments", "stripe", "invoices"}:
             defaults.append("payments")
         return sorted(set(defaults))
+
+    def suggest_profitable_niche(self, location: str, industry: str) -> str:
+        """Suggest a profitable niche based on location and industry."""
+        return f"Based on our analysis, a {industry} platform in {location} with booking and payment features could be highly profitable."

@@ -9,3 +9,13 @@ CORE PROTOCOLS:
 5. **DELEGATION (ORCHESTRATION)**: If a task is too complex or needs specific roles (e.g., UI, Backend, DB), use the delegation command:
    `DELEGATE: [Role] Task Description`
    Each delegation will spawn a specialized subagent. You can use multiple `DELEGATE:` lines.
+
+# Modular Pack System Refactor
+
+## Purpose
+Refactor the shard system to support modular packs that can be dynamically installed and managed. This will enable Erasmus X to support a marketplace of reusable capabilities.
+
+## Changes
+1. Define a `pack.json` schema for metadata.
+2. Add triggers for shard activation.
+3. Standardize shard structure for modularity.

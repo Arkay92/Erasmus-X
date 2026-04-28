@@ -44,6 +44,10 @@ class ExecutionMemory:
             "final_command": final_command,
         })
 
+    def record_successful_project(self, project_name: str, metadata: dict[str, Any]) -> dict[str, Any]:
+        """Record a successful project for future retrieval."""
+        return self.record("successful_project", project_name, "", "success", metadata)
+
     def retrieve(self, request: str, stack: str = "", limit: int = 5) -> list[dict[str, Any]]:
         records = self.load()
         query_terms = self._terms(request + " " + stack)
@@ -61,6 +65,11 @@ class ExecutionMemory:
                 scored.append((score, record))
         scored.sort(key=lambda item: (item[0], item[1].get("timestamp", 0)), reverse=True)
         return [record for _score, record in scored[:limit]]
+
+    def retrieve_successful_projects(self, limit: int = 10) -> list[dict[str, Any]]:
+        """Retrieve a list of successful projects."""
+        records = self.load()
+        return [record for record in records if record.get("kind") == "successful_project"][:limit]
 
     def load(self) -> list[dict[str, Any]]:
         if not os.path.exists(self.path):
