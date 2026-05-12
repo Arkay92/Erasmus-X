@@ -1,6 +1,7 @@
 ddgs
 networkx
 openai
+rich
 torch
 torch-hd
 transformers
