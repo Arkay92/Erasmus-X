@@ -19,6 +19,7 @@ from core.dependency_graph import DependencyGraph
 from core.critic import BuildCritic
 from core.failure_learner import FailureLearner
 from core.reasoning_engine import ReasoningEngine
+from core.dispatcher import NeurosymbolicDispatcher
 from core.prompt_distiller import PromptDistiller
 from core.subagent_manager import SubagentManager
 from core.request_cache import RequestCache
@@ -60,6 +61,7 @@ class NeurosymbolicAgent:
         
         # Elite V12 Subsystems
         self.reasoning_engine = ReasoningEngine(client=self.agent_client, brain=self.brain)
+        self.dispatcher = NeurosymbolicDispatcher(client=self.agent_client)
         self.contractor = CapabilityContract(client=self.agent_client, brain=self.brain)
         self.critic = BuildCritic(client=self.agent_client)
         self.failure_memory = FailureLearner(brain=self.brain)
@@ -233,81 +235,128 @@ class NeurosymbolicAgent:
             if distilled_tuning and messages:
                 messages[0]['content'] += distilled_tuning
 
-        print(f"Erasmus is thinking ({request_mode} mode)...", flush=True)
-        raw_response = ""
-        
+        if request_mode == "DEEP" and not early_project:
+            return self._dispatch_route(user_input, messages, meta, memory_results, stream_callback)
+            
         if early_project:
             print("[*] Project route confirmed. Bypassing conversational LLM inference.", flush=True)
             project_dir, plan_text = self._project_planning_flow(user_input, meta, web_ref=memory_results.get('web'))
             return self._autonomous_coding_loop(user_input, messages, plan_text, base_dir=project_dir, stream_callback=stream_callback)
         else:
-            try:
-                with tracker.track("LLM_INFERENCE"):
-                    is_reasoning_model = "minimax" in selected_model.lower() or "o1" in selected_model.lower() or "r1" in selected_model.lower()
-                    response = self.client.chat.completions.create(
-                        model=selected_model,
-                        messages=messages,
-                        temperature=0.3 if request_mode == "DEEP" else 0.1,
-                        max_tokens=config.DEEP_MODE_OUTPUT_TOKENS if (request_mode == "DEEP" or is_reasoning_model) else config.FAST_MODE_OUTPUT_TOKENS,
-                        timeout=config.REQUEST_TIMEOUT,
-                        stream=bool(stream_callback)
-                    )
-                    if stream_callback:
-                        raw_response = ""
-                        for chunk in response:
-                            if not getattr(chunk, "choices", None):
-                                continue
-                            delta = chunk.choices[0].delta
-                            content = ""
-                            # NVIDIA NIM / Reasoning models support
-                            if getattr(delta, "reasoning_content", None) is not None:
-                                content += delta.reasoning_content
-                            if delta.content is not None:
-                                content += delta.content
-                                
-                            if content:
-                                raw_response += content
-                                stream_callback(content)
-                    else:
-                        msg = response.choices[0].message
-                        raw_response = getattr(msg, "reasoning_content", "") or ""
-                        if msg.content:
-                            raw_response += ("\n\n" if raw_response else "") + msg.content
-            except Exception as e:
-                print(f"[!] Primary LLM Failed: {e}. Falling back to Local SLM...")
-                if self.local_llm:
-                    try:
-                        # FAST mode: use short focused prompt to avoid GPT-2 context overflow
-                        if request_mode == "FAST":
-                            slm_prompt = f"Answer this question concisely: {user_input}"
-                        else:
-                            # DEEP mode: include recent context but truncated to avoid overflow
-                            ctx = "\n".join([m['content'][:200] for m in messages[-3:]])
-                            slm_prompt = f"{ctx}\n\nAnswer: "
-                        raw_response = self.local_llm.generate(slm_prompt, max_new_tokens=200)
-                    except Exception as llm_e:
-                        print(f"[!] Local LLM generation error: {llm_e}")
-                        raw_response = f"I encountered a local model error processing your request."
+            return self._simple_llm_call(messages, stream_callback, selected_model=selected_model, request_mode=request_mode)
+
+    def _simple_llm_call(self, messages, stream_callback, selected_model=config.MODEL_NAME, request_mode="FAST", user_input="", meta=None, cache_key=None):
+        """Helper for standard LLM inference with full post-processing."""
+        raw_response = ""
+        try:
+            with tracker.track("LLM_INFERENCE"):
+                is_reasoning_model = any(k in selected_model.lower() for k in ["minimax", "o1", "r1"])
+                response = self.client.chat.completions.create(
+                    model=selected_model,
+                    messages=messages,
+                    temperature=0.3 if request_mode == "DEEP" else 0.1,
+                    max_tokens=config.DEEP_MODE_OUTPUT_TOKENS if (request_mode == "DEEP" or is_reasoning_model) else config.FAST_MODE_OUTPUT_TOKENS,
+                    timeout=config.REQUEST_TIMEOUT,
+                    stream=bool(stream_callback)
+                )
+                if stream_callback:
+                    for chunk in response:
+                        if not getattr(chunk, "choices", None): continue
+                        delta = chunk.choices[0].delta
+                        content = getattr(delta, "reasoning_content", "") or ""
+                        if delta.content: content += delta.content
+                        if content:
+                            raw_response += content
+                            stream_callback(content)
                 else:
-                    raw_response = "I encountered an error and could not generate a response."
-            
-        raw_response = raw_response or ""
-        stable_fallback = factual_fallback(user_input)
-        if stable_fallback and raw_response.strip().startswith("I encountered an error"):
-            raw_response = stable_fallback
+                    msg = response.choices[0].message
+                    raw_response = getattr(msg, "reasoning_content", "") or ""
+                    if msg.content: raw_response += ("\n\n" if raw_response else "") + msg.content
+        except Exception as e:
+            print(f"[!] LLM Call Failed: {e}")
+            raw_response = factual_fallback(user_input) or "I encountered an error and could not generate a response."
         
-        # 4. Verification & Repair
-        with tracker.track("CONTRACT_ENFORCEMENT"):
+        # 1. Repetition Guard
+        if raw_response:
+            lines = [l.strip() for l in raw_response.split('\n') if l.strip()]
+            if len(lines) > 3:
+                first_line = lines[0]
+                dupes = sum(1 for l in lines if l == first_line)
+                if dupes > len(lines) * 0.6:
+                    raw_response = first_line
+
+        # 2. Contract Enforcement
+        if meta:
             ok, err = self.executor.enforce_contract(user_input, raw_response, meta)
             if not ok:
                  print(f"[!] Contract Violation: {err}")
+                 # Recursive repair (limited)
                  messages.append({"role": "assistant", "content": raw_response})
                  messages.append({"role": "user", "content": f"RE-PROMPT: {err}"})
                  try:
-                     response = self.client.chat.completions.create(model=selected_model, messages=messages, temperature=0.1, timeout=config.REQUEST_TIMEOUT)
-                     raw_response = response.choices[0].message.content
-                 except Exception:
-                     pass # keep original raw_response if repair fails
+                     repair_resp = self.client.chat.completions.create(model=selected_model, messages=messages, temperature=0.1)
+                     raw_response = repair_resp.choices[0].message.content
+                 except: pass
+
+        clean_ans = re.sub(r'\[FACT\].*', '', raw_response, flags=re.DOTALL).strip()
+        if not clean_ans: clean_ans = raw_response
+        
+        # 3. Persistence
+        self.messages.append({"role": "user", "content": user_input})
+        self.messages.append({"role": "assistant", "content": clean_ans})
+        self.brain.add_convo_step({"timestamp": time.time(), "query": user_input, "raw_output": raw_response, "clean_response": clean_ans})
+        
+        if cache_key and self.request_cache:
+            self.request_cache.set(cache_key, {"raw": raw_response, "clean": clean_ans})
+        
+        if self.brain and not meta.get('is_dynamic') and not meta.get('is_project'):
+            self.brain.add_to_cache(user_input, raw_response, clean_ans)
+
+        return make_response(raw_response, clean_ans, status="ok")
+
+    def _dispatch_route(self, user_input, messages, meta, memory_results, stream_callback, selected_model):
+        """Elite V15: The agentic reasoning layer that replaces hardcoded routing."""
+        # 1. Get decision support
+        lessons = self.reasoning_engine.get_decision_support(user_input)
+        context_summary = f"RELEVANT LESSONS:\n{lessons}\n\nTARGET_STACK: {meta.get('target_stack')}"
+        
+        # 2. Dispatch
+        action = self.dispatcher.select_action(user_input, context_summary)
+        thought = action.get('thought', '')
+        if stream_callback and thought:
+            stream_callback(f"\n> [REASONING]: {thought}\n\n")
+            
+        op = action.get('operation')
+        payload = action.get('payload', {})
+        
+        if op == "RESEARCH":
+             project_dir, plan_text = self._project_planning_flow(user_input, meta, web_ref=memory_results.get('web'))
+             if stream_callback: stream_callback(f"[*] Deep Research initiated: {payload.get('query')}\n\n")
+             return self._autonomous_coding_loop(user_input, messages, plan_text, base_dir=project_dir, stream_callback=stream_callback)
+        
+        elif op == "SEARCH":
+             query = payload.get('query', user_input)
+             web_results = self.searcher.search(query)
+             messages.append({"role": "system", "content": f"SEARCH RESULTS:\n{web_results}"})
+             return self._simple_llm_call(messages, stream_callback, request_mode="DEEP", user_input=user_input, meta=meta, selected_model=selected_model)
+             
+        elif op == "PROJECT":
+             project_dir, plan_text = self._project_planning_flow(user_input, meta, web_ref=memory_results.get('web'))
+             return self._autonomous_coding_loop(user_input, messages, plan_text, base_dir=project_dir, stream_callback=stream_callback)
+             
+        elif op == "CODE":
+             project_dir, plan_text = self._project_planning_flow(user_input, meta)
+             return self._autonomous_coding_loop(user_input, messages, plan_text, base_dir=project_dir, stream_callback=stream_callback)
+        
+        elif op == "DELEGATE":
+             delegations = payload.get('delegations', [])
+             results = self.subagent_manager.delegate_and_collect([(d['role'], d['task']) for d in delegations])
+             raw = f"DELEGATION SUMMARY:\n" + "\n".join([f"- {r}: {v[:100]}..." for r, v in results.items()])
+             return make_response(raw, "Task decentralized.", status="ok", metadata={**meta, "delegated": True})
+             
+        return self._simple_llm_call(messages, stream_callback, request_mode="DEEP", user_input=user_input, meta=meta, selected_model=selected_model)
+            
+
 
         # 5. History & Sync
         if not raw_response or not raw_response.strip():

@@ -69,6 +69,13 @@ class ReasoningEngine:
         match = re.search(r"REASONING_QUALITY:\s*(\d+)", text)
         return int(match.group(1)) if match else 0
 
+    def get_decision_support(self, query):
+        """Elite V15: Specialized lesson retrieval for the Dispatcher."""
+        lessons = self.get_relevant_lessons(query, limit=3)
+        if not lessons:
+            return "No specific past lessons for this task type."
+        return "\n".join([f"- {l}" for l in lessons])
+
     def get_relevant_lessons(self, query, limit=5):
         """Returns relevant lessons from the brain's deterministic registry."""
         if not self.brain:

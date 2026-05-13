@@ -22,6 +22,7 @@ def _load_prompt(filename, default_text=""):
 SYSTEM_PROMPT = _load_prompt("system_prompt.md")
 FAST_SYSTEM_PROMPT = _load_prompt("fast_system_prompt.md")
 MID_SYSTEM_PROMPT = _load_prompt("mid_system_prompt.md")
+DISPATCHER_PROMPT = _load_prompt("dispatcher_system_prompt.md")
 WORKING_NOTES_MODE = _load_prompt("working_notes_mode.md")
 
 # Agnostic Query Brain prompts
