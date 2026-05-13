@@ -30,15 +30,13 @@ from core.code_fallbacks import CodeFallbackRegistry
 from core.answer_fallbacks import factual_fallback
 from core.active_kg_builder import ActiveKGBuilder
 from core.graph_reasoner import GraphReasoner
-from core.distributed_brain import DistributedBrain
+from core.vector_store import HypervectorDB
 from core.context_manager import ContextManager
 from core.feedback_store import FeedbackStore
 from core.scaffold_registry import ScaffoldRegistry
 from core.dynamic_scaffold_builder import DynamicScaffoldBuilder
 from core.execution_memory import ExecutionMemory
 from core.auto_pack_builder import AutoPackBuilder
-from core.economic_mode import EconomicMode
-from core.swarm_mode import SwarmMode
 from core.response_schema import make_response
 from core.inject_feature_packs import register_feature_packs
 from core.inject_prisma_packs import register_prisma_packs
@@ -86,14 +84,12 @@ class NeurosymbolicAgent:
         self.code_fallbacks = CodeFallbackRegistry()
         self.kg_builder = ActiveKGBuilder(self.kg)
         self.graph_reasoner = GraphReasoner(self.kg)
-        self.distributed_brain = DistributedBrain(self.brain)
+        self.distributed_brain = self.brain
         self.feedback_store = FeedbackStore()
         self.scaffold_registry = ScaffoldRegistry()
         self.dynamic_scaffold_builder = DynamicScaffoldBuilder(client=self.agent_client, searcher=self.searcher)
         self.execution_memory = ExecutionMemory()
         self.auto_pack_builder = AutoPackBuilder(brain=self.brain)
-        self.economic_mode = EconomicMode()
-        self.swarm_mode = SwarmMode()
         self._ensure_builtin_feature_packs()
         # Subsystems initialized. Ready for orchestration.
 
@@ -212,7 +208,19 @@ class NeurosymbolicAgent:
         # 3. Context & Inference
         with tracker.track("CONTEXT_ASSEMBLY"):
             failures = self.failure_memory.get_recent_failures(limit=2)
-            memory_results = {'session': session_mems, 'facts': graph_facts, 'web': web_text, 'failures': failures}
+            history_logs = self.brain.get_convo_history(limit=3)
+            
+            # Recalled Capability (Learned Skills)
+            recalled_cap = self.brain.find_best_capability(user_input)
+            
+            memory_results = {
+                'session': session_mems,
+                'facts': graph_facts,
+                'web': web_text,
+                'failures': failures,
+                'history_logs': history_logs,
+                'recalled_cap': recalled_cap
+            }
             
             # Speculative Tuning: Let Erasmus X 'fine-tune' instructions for this task
             distilled_tuning = None
@@ -228,11 +236,10 @@ class NeurosymbolicAgent:
         print(f"Erasmus is thinking ({request_mode} mode)...", flush=True)
         raw_response = ""
         
-        if early_project or meta.get('is_project'):
-            print("[*] Project route confirmed. Bypassing conversational LLM inference.")
-            raw_response = "[Autonomous Project Initialization]"
-            if stream_callback:
-                stream_callback("Initializing Neurosymbolic Project Sandbox...\n")
+        if early_project:
+            print("[*] Project route confirmed. Bypassing conversational LLM inference.", flush=True)
+            project_dir, plan_text = self._project_planning_flow(user_input, meta, web_ref=memory_results.get('web'))
+            return self._autonomous_coding_loop(user_input, messages, plan_text, base_dir=project_dir, stream_callback=stream_callback)
         else:
             try:
                 with tracker.track("LLM_INFERENCE"):
@@ -333,7 +340,15 @@ class NeurosymbolicAgent:
              
         self.messages.append({"role": "user", "content": user_input})
         self.messages.append({"role": "assistant", "content": clean_ans})
-        self.distributed_brain.add_document(f"Context: {user_input}. Summary: {clean_ans}")
+        
+        # Log to Persistent Episodic Memory (convo_chain)
+        convo_entry = {
+            "timestamp": time.time(),
+            "query": user_input,
+            "raw_output": raw_response,
+            "clean_response": clean_ans
+        }
+        self.brain.add_convo_step(convo_entry)
         
         # Add to HDC Semantic Cache for instant future lookups
         if self.brain and not meta.get('is_dynamic') and not early_project and not meta.get('is_code'):
@@ -356,8 +371,7 @@ class NeurosymbolicAgent:
         is_project = meta.get('is_project')
         if is_project:
             project_dir, project_summary = self._project_planning_flow(user_input, messages)
-            raw, answer = self._autonomous_coding_loop(user_input, messages, project_summary, base_dir=project_dir)
-            return make_response(raw, answer, files=self._extract_saved_files_from_report(answer), status="ok", metadata={**meta, "project_dir": project_dir})
+            return self._autonomous_coding_loop(user_input, messages, project_summary, base_dir=project_dir, stream_callback=stream_callback)
         elif meta['is_code'] and not user_input.lstrip().startswith("ROLE:"):
             # Single-File Code Task: Direct validate and save (bypass V12 Project Loop)
             response_for_files = raw_response
@@ -390,12 +404,12 @@ class NeurosymbolicAgent:
         return make_response(raw_response, clean_ans, status="ok", metadata=meta)
 
     def _try_scaffold_project(self, user_input, meta):
-        economic_plan = self.economic_mode.evaluate(user_input, list(getattr(self.brain, "feature_packs", {}).keys()))
+        # Clean matching pack detection via brain
+        matching_packs = [p for p in self.brain.feature_packs.keys() if p.lower() in user_input.lower()]
+        if matching_packs:
+            print(f"[*] Economic Mode: matching packs found: {', '.join(matching_packs)}")
+        
         memory_matches = self.execution_memory.retrieve(user_input, meta.get("target_stack", ""), limit=3)
-        if economic_plan.get("matching_packs"):
-            print(f"[*] Economic Mode: matching packs found: {', '.join(economic_plan['matching_packs'])}")
-        if economic_plan.get("sellable_output"):
-            print("[*] Economic Mode: sellable/template-worthy output detected.")
         if memory_matches:
             print(f"[*] Execution Memory: retrieved {len(memory_matches)} similar build record(s).")
 
@@ -412,9 +426,8 @@ class NeurosymbolicAgent:
         print(f"[*] Project Planning Complete: {project_dir}")
         manifest = list(scaffold.files)
         blocks = []
-        if self.swarm_mode.should_activate(user_input) and "SWARM_PLAN.md" not in scaffold.files:
-            blocks.append(f"[FILE: SWARM_PLAN.md]\n```md\n{self.swarm_mode.as_markdown(user_input)}\n```")
-            manifest.append("SWARM_PLAN.md")
+        # Swarm Mode decommissioned in favor of autonomous planning loop
+        pass
         for path, content in scaffold.files.items():
             lang = os.path.splitext(path)[1].lstrip('.') or 'text'
             blocks.append(f"[FILE: {path}]\n```{lang}\n{content}\n```")
@@ -430,7 +443,8 @@ class NeurosymbolicAgent:
         report = self._generate_report(project_dir, manifest, saved, failures)
         if scaffold.verification_commands:
             report += "\n**Verification Commands**: " + " && ".join(scaffold.verification_commands)
-        report += "\n**Economic Mode**: " + json.dumps(economic_plan, sort_keys=True)
+        if matching_packs:
+            report += "\n**Economic Mode**: " + ", ".join(matching_packs)
         if memory_matches:
             report += f"\n**Execution Memory Matches**: {len(memory_matches)}"
         build_status = "failed" if failures else "verified_static"
@@ -474,17 +488,18 @@ class NeurosymbolicAgent:
             failures["verification:commands"] = "Scaffold has no CLI verification commands."
         return failures
 
-    def _project_planning_flow(self, user_input, messages):
+    def _project_planning_flow(self, user_input, meta, web_ref=None):
         """Elite V10: 11-step project pipeline initialization."""
-        print("[*] Project Phase: Planning & Manifesting...")
+        print("[*] Project Phase: Planning & Manifesting...", flush=True)
         graph_plan = self.graph_reasoner.plan_project(user_input)
-        with tracker.track("PROJECT_RESEARCH"):
-            search_query = f"Architecture and file structure for {user_input}"
-            try:
-                web_ref = self.searcher.search(search_query)
-            except Exception as e:
-                print(f"[!] Project research failed: {e}")
-                web_ref = ""
+        if not web_ref:
+            with tracker.track("PROJECT_RESEARCH"):
+                search_query = f"Architecture and file structure for {user_input}"
+                try:
+                    web_ref = self.searcher.search(search_query)
+                except Exception as e:
+                    print(f"[!] Project research failed: {e}")
+                    web_ref = ""
         
         project_name = re.sub(r'[^a-z0-9]', '_', user_input.lower())[:20]
         project_dir = f"v12_{project_name}_{int(time.time())}"
@@ -492,11 +507,13 @@ class NeurosymbolicAgent:
         
         # Elite V12: Capability Contract Generation
         with tracker.track("CONTRACT_GENERATION"):
+            print("[*] V12 Phase: Generating Capability Contract...", flush=True)
             contract = self.contractor.build(user_input)
             with open(os.path.join(sandbox_path, "CONTRACT.json"), "w", encoding="utf-8") as f:
                  json.dump(contract, f, indent=2)
                  
         with tracker.track("PLAN_GENERATION"):
+            print("[*] Phase: Drafting implementation plan...", flush=True)
             planner_prompt = prompts.PROJECT_PLANNER_PROMPT + f"\n\nUSER REQUEST: {user_input}"
             planner_prompt += f"\n\n[GRAPH PLAN]\n" + "\n".join(f"- {step}" for step in graph_plan[:10])
             planner_prompt += f"\n\n[MANDATORY CONTRACT TARGETS]\nYour plan MUST include these exact files:\n"
@@ -509,7 +526,9 @@ class NeurosymbolicAgent:
             if recent_failures:
                 planner_prompt += "\n\n[PAST BUILD FAILURES (Avoid these mistakes)]\n"
                 for rf in recent_failures:
-                    planner_prompt += f"- {rf['request']}: {rf['failures']}\n"
+                    req = rf.get('request', 'Previous Build')
+                    errs = rf.get('failures', rf.get('error', 'Implementation Failure'))
+                    planner_prompt += f"- {req}: {errs}\n"
             
             if config.ENABLE_REASONING_ENGINE:
                 lessons = self.reasoning_engine.get_relevant_lessons(user_input)
@@ -523,7 +542,7 @@ class NeurosymbolicAgent:
                     temperature=0.1,
                     timeout=config.REQUEST_TIMEOUT,
                 )
-                plan_text = response.choices[0].message.content
+                plan_text = response.choices[0].message.content or ""
             except Exception as e:
                 print(f"[!] Planning generation failed: {e}")
                 plan_text = f"Fallback Plan Generated due to API error: {e}"
@@ -692,7 +711,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
             print(f"[+] Pack Injection: committed {len(saved)} required file(s).")
         return saved
 
-    def _autonomous_coding_loop(self, user_input, base_messages, initial_response, base_dir=None):
+    def _autonomous_coding_loop(self, user_input, base_messages, initial_response, base_dir=None, stream_callback=None):
         """Elite V10.4: Layered repair loop with deterministic seeding and strict dependency traversal."""
         attempts = 0
         max_attempts = config.MAX_PROJECT_RETRIES + 5  # Increased runway for complex scaffolds
@@ -726,6 +745,14 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
         last_project_hash = None
         
         # Elite V17: Align Manifest with Capability Contract
+        # Wire in Brain-recalled feature packs if they match
+        recalled_cap = base_messages[0].get('metadata', {}).get('recalled_cap') if base_messages else None
+        if recalled_cap and recalled_cap.get('type') == 'SHARD':
+            pack = self.brain.get_feature_pack(recalled_cap['name'])
+            if pack:
+                print(f"[+] Capability Induction: Injecting Brain-recalled pack '{recalled_cap['name']}'")
+                self._inject_required_pack_files(contract, {}, manifest, base_dir=base_dir)
+
         critical_files = contract.get('critical_files', [])
         if not critical_files:
              critical_files = contract.get('specs', {}).get('critical_files', [])
@@ -818,7 +845,13 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                      if config.ENABLE_REASONING_ENGINE:
                           with tracker.track("REASONING_ANALYSIS"):
                                self.reasoning_engine.analyze_task(user_input, base_messages + [{"role": "assistant", "content": current_response}], "SUCCESS", critic_report)
-                     return current_response, re.sub(r'\[FACT\].*', '', current_response).strip()
+                     return make_response(
+                         current_response, 
+                         self._generate_report(base_dir, manifest, actual_saved, {}),
+                         files=actual_saved,
+                         status="ok",
+                         metadata={"project_dir": base_dir or scratch_dir}
+                     )
                 else:
                      print(f"[!] V13 Critic Rejection: Logic depth or correctness issues found.")
                      # Record failure for learning
@@ -862,7 +895,13 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                                          critic_notes[fname] = ft['reason']
                                else:
                                     print("[!] Fidelity Scan passed but Critic still rejected. Declaring closure failure.")
-                                    return current_response, self._generate_report(base_dir, manifest, actual_saved, {"critic": critic_report})
+                                    return make_response(
+                                         current_response, 
+                                         self._generate_report(base_dir, manifest, actual_saved, {"critic": critic_report}),
+                                         files=actual_saved,
+                                         status="error",
+                                         metadata={"reason": "critic_rejection"}
+                                     )
                      
                      if rejection_targets:
                           induced_new = []
@@ -888,8 +927,14 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                           
                           # Elite V19: Absolute Critic Stop
                           if critic_pass_count > config.MAX_CRITIC_CYCLES:
-                               print(f"[!] HARD LIMIT: Exiting after {critic_pass_count} critic cycles.")
-                               return current_response, self._generate_report(base_dir, manifest, actual_saved, {"critic": "Hard Limit Reached"})
+                                print(f"[!] HARD LIMIT: Exiting after {critic_pass_count} critic cycles.")
+                                return make_response(
+                                    current_response, 
+                                    self._generate_report(base_dir, manifest, actual_saved, {"critic": "Hard Limit Reached"}),
+                                    files=actual_saved,
+                                    status="error",
+                                    metadata={"reason": "hard_limit"}
+                                )
 
                           # Elite V18: Aggressive Runway Extension
                           # Ensure we have at least 5 more trials if new targets are found
@@ -912,8 +957,14 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                           attempts += 1
                           continue
                      else:
-                          print("[!] Critic rejected build but provided no specific file targets. Declaring failure.")
-                          return current_response, self._generate_report(base_dir, manifest, actual_saved, {"critic": critic_report})
+                           print("[!] Critic rejected build but provided no specific file targets. Declaring failure.")
+                           return make_response(
+                               current_response, 
+                               self._generate_report(base_dir, manifest, actual_saved, {"critic": critic_report}),
+                               files=actual_saved,
+                               status="error",
+                               metadata={"reason": "vague_critic"}
+                           )
 
             # Step 2: Surgical Repair
             attempts += 1
@@ -1038,10 +1089,18 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
              self._run_synthesis_loop(user_input, base_messages + [{"role": "assistant", "content": current_response}])
 
         report = self._generate_report(base_dir, manifest, actual_saved, persistent_failures)
-        return current_response, report
+        return make_response(
+            current_response, 
+            report, 
+            files=actual_saved, 
+            status="error" if persistent_failures else "ok",
+            metadata={"project_dir": base_dir or scratch_dir}
+        )
 
     def _extract_and_save_files(self, text, base_dir=None, manifest=None):
         """V10 Modular Extraction with formatting and transactional writes."""
+        if not isinstance(text, str):
+            text = str(text or "")
         file_markers = list(re.finditer(r"\[FILE:\s*((?:\[[^\]]*\]|[^\]])+)\]", text))
         scratch_dir = self.sandbox.root_dir if not base_dir else os.path.join(self.sandbox.root_dir, base_dir)
         os.makedirs(scratch_dir, exist_ok=True)
@@ -1165,8 +1224,18 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
 
     def _extract_manifest(self, plan_text):
         """Hardened V10.3: Path-aware and framework-shielded parsing."""
-        raw_paths = re.findall(r"[`']?([\w\.\/\-\[\]@]+\.\w+)[`']?", plan_text)
-        valid_exts = {'.py', '.js', '.tsx', '.jsx', '.css', '.html', '.json', '.md', '.sql', '.yml', '.yaml', '.toml'}
+        if not isinstance(plan_text, str):
+            plan_text = str(plan_text or "")
+        # Hardened V10.5: Multi-strategy path extraction
+        # Strategy A: Explicit [FILE: path] markers
+        explicit_matches = re.findall(r"\[FILE:\s*([^\]\s]+)\]", plan_text)
+        
+        # Strategy B: Generic path detection (fallback)
+        clean_text = re.sub(r"\[FILE:\s*", " ", plan_text)
+        generic_matches = re.findall(r"(?:^|[\s'`])([\w\.\/\-@]+\.\w+)(?=[\]\s'`]|$)", clean_text)
+        
+        raw_paths = list(set(explicit_matches + generic_matches))
+        valid_exts = {'.py', '.js', '.tsx', '.jsx', '.css', '.html', '.json', '.md', '.sql', '.yml', '.yaml', '.toml', '.rs', '.go', '.c', '.cpp', '.h', '.hpp', '.sh', '.bat', '.ps1'}
         framework_labels = {'next-js', 'nextjs', 'frontend', 'backend', 'database', 'sqlite', 'react', 'next.js'}
         root_allowlist = {'package.json', 'requirements.txt', 'dockerfile', 'docker-compose.yml', 'tsconfig.json'}
         

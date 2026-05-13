@@ -21,7 +21,14 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, List
+import argparse
+
+# Force UTF-8 for Windows consoles
+if sys.platform == "win32":
+    import codecs
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 
 try:
     from rich import box
@@ -586,7 +593,16 @@ class ErasmusTerminalUI:
 
 
 def main() -> None:
-    ErasmusTerminalUI().run()
+    parser = argparse.ArgumentParser(description="Erasmus X CLI")
+    parser.add_argument("--chat", type=str, help="Run a single chat command and exit")
+    args = parser.parse_args()
+    
+    ui = ErasmusTerminalUI()
+    if args.chat:
+        ui._ensure_agent()
+        ui.handle_command(args.chat)
+    else:
+        ui.run()
 
 
 if __name__ == "__main__":

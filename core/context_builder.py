@@ -58,6 +58,25 @@ class ContextBuilder:
             knowledge_blocks.append(web_block)
             budget -= count_tokens(web_block)
 
+        # 4b. Persistent Episodic Memory (Long-term Context)
+        history_logs = memory_results.get('history_logs', [])
+        if history_logs and budget > 400 and len(history) < 2:
+            hist_block = "### HISTORICAL CONTEXT (Past interactions)\n"
+            for log in history_logs:
+                # Use safe get() to avoid KeyError on legacy logs
+                q = log.get('query', 'Previous Request')
+                a = log.get('clean_response', log.get('raw_output', '...'))
+                hist_block += f"- User: {q}\n  Erasmus: {str(a)[:150]}...\n"
+            knowledge_blocks.append(hist_block)
+            budget -= count_tokens(hist_block)
+            
+        # 4c. Recalled Capabilities (Learned Skills)
+        recalled = memory_results.get('recalled_cap')
+        if recalled and budget > 200:
+            cap_block = f"### RECALLED CAPABILITY\n- Type: {recalled['type']}\n- Name: {recalled['name']}\n"
+            knowledge_blocks.append(cap_block)
+            budget -= count_tokens(cap_block)
+
         # 5. Reasoning Lessons (Reinforcement Learning)
         lessons_block = ""
         if self.reasoning_engine and config.ENABLE_REASONING_ENGINE:
@@ -72,7 +91,9 @@ class ContextBuilder:
         if failures and budget > 300:
             failures_block = "### RECENT BUILD FAILURES (Avoid these mistakes)\n"
             for f in failures:
-                failures_block += f"- Request: {f['request']}\n  Failures: {f['failures']}\n"
+                req = f.get('request', 'Previous Build')
+                errs = f.get('failures', f.get('error', 'Critical Implementation Failure'))
+                failures_block += f"- Request: {req}\n  Failures: {errs}\n"
             budget -= count_tokens(failures_block)
 
         # Final Assembly

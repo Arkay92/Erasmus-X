@@ -64,13 +64,13 @@ class TaskRouter:
 
     def _is_project_like(self, text, intent=None, confidence=0):
         lower = text.lower()
-        build_verbs = ('create', 'build', 'make', 'scaffold', 'generate')
+        build_verbs = ('create', 'build', 'make', 'scaffold', 'generate', 'give', 'givee')
         project_targets = (
             'project', 'application', 'dashboard', 'website',
             'next.js', 'nextjs', 'react', 'express', 'fastapi', 'rest api',
             'full-stack', 'full stack', 'multiple files', 'bot', 'worker', 'tool',
             'service', 'cli', 'webhook', 'booking', 'business', 'saas', 'crm',
-            'marketplace', 'appointments', 'game', 'program', 'system'
+            'marketplace', 'appointments', 'game', 'program', 'system', 'script', 'logic'
         )
         has_project_target = any(t in lower for t in project_targets) or bool(re.search(r'\bapp\b', lower))
         if intent == "PROJECT" and confidence > 0.35 and has_project_target:

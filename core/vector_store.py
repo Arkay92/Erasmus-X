@@ -113,11 +113,19 @@ class HypervectorDB:
     def add_convo_step(self, entry):
         """Logs a conversation/benchmark step and vectorizes it."""
         self.convo_chain.append(entry)
+        # Keep bounded to prevent memory bloat
+        if len(self.convo_chain) > 100:
+            self.convo_chain = self.convo_chain[-100:]
+            
         # Vectorize the query and response for "meta-memory" retrieval
         query = entry.get('query', 'Unknown')
         output = entry.get('raw_output', entry.get('raw_response', 'No output'))
         log_text = f"Query: {query} | Response: {str(output)[:200]}"
         self.add_document(log_text)
+
+    def get_convo_history(self, limit=5):
+        """Retrieves recent conversation steps from the persistent log."""
+        return self.convo_chain[-limit:] if self.convo_chain else []
 
     def add_to_cache(self, query, raw_response, clean_ans):
         """Adds a response to the semantic cache."""
