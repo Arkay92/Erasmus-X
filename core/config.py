@@ -62,6 +62,7 @@ PROVIDER_BASE_URLS = {
     "anthropic": "https://api.anthropic.com",
     "deepseek": "https://api.deepseek.com/v1",
     "kimi": "https://api.moonshot.ai/v1",
+    "nvidia": "https://integrate.api.nvidia.com/v1",
 }
 
 
@@ -84,6 +85,7 @@ class Settings:
     agent_api_base_url: str = field(init=False)
     api_key: str = field(init=False)
     agent_api_key: str = field(init=False)
+    fast_model_name: str = field(init=False)
     specialized_models: Dict[str, str] = field(default_factory=lambda: {
         "nextjs": os.getenv("MODEL_NEXTJS", ""),
         "fastapi": os.getenv("MODEL_FASTAPI", ""),
@@ -182,6 +184,7 @@ class Settings:
         object.__setattr__(self, "agent_api_base_url", self._resolve_base_url(self.agent_model_provider, role_prefix="AGENT_MODEL"))
         object.__setattr__(self, "api_key", self._resolve_api_key(self.model_provider, role_prefix="MODEL"))
         object.__setattr__(self, "agent_api_key", self._resolve_api_key(self.agent_model_provider, role_prefix="AGENT_MODEL"))
+        object.__setattr__(self, "fast_model_name", _first_env("FAST_MODEL_NAME", default=model_name))
         object.__setattr__(self, "local_llm_type", agent_model_name if not self.remote_agent_model_type else self.local_agent_model_type)
 
         runtime_root = os.getenv("ERASMUS_RUNTIME_ROOT", self.default_runtime_root)
@@ -234,6 +237,7 @@ REMOTE_MODEL_TYPE = settings.remote_model_type
 LOCAL_AGENT_MODEL_TYPE = settings.local_agent_model_type
 REMOTE_AGENT_MODEL_TYPE = settings.remote_agent_model_type
 MODEL_NAME = settings.model_name
+FAST_MODEL_NAME = settings.fast_model_name
 AGENT_MODEL_NAME = settings.agent_model_name
 SPECIALIZED_MODELS = settings.specialized_models
 

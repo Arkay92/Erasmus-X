@@ -50,7 +50,8 @@ class TaskRouter:
 
         code_terms = (
             'script', 'algorithm', 'function', 'class', 'struct',
-            'interface', 'component', 'route', 'api'
+            'interface', 'component', 'route', 'api', 'game', 'program',
+            'app', 'application'
         )
         return any(re.search(rf"\b{re.escape(term)}\b", lower) for term in code_terms)
 
@@ -69,7 +70,7 @@ class TaskRouter:
             'next.js', 'nextjs', 'react', 'express', 'fastapi', 'rest api',
             'full-stack', 'full stack', 'multiple files', 'bot', 'worker', 'tool',
             'service', 'cli', 'webhook', 'booking', 'business', 'saas', 'crm',
-            'marketplace', 'appointments'
+            'marketplace', 'appointments', 'game', 'program', 'system'
         )
         has_project_target = any(t in lower for t in project_targets) or bool(re.search(r'\bapp\b', lower))
         if intent == "PROJECT" and confidence > 0.35 and has_project_target:
@@ -112,7 +113,7 @@ class TaskRouter:
 
     def _is_complex_reasoning(self, text, intent, confidence):
         """Heuristic for complexity escalation."""
-        if any(k in text.lower() for k in ['complex', 'architecture', 'system', 'refactor', 'debug', 'project']):
+        if any(k in text.lower() for k in ['complex', 'architecture', 'system', 'refactor', 'debug', 'project', 'test and fix', 'fix until']):
             return True
         if intent == "PROJECT" and confidence > 0.3:
             return True
@@ -140,21 +141,3 @@ class ExecutionController:
              return False, "Project request detected. You must provide a plan or implement files."
              
         return True, "Contract satisfied"
-
-    def execute_task(self, task_metadata):
-        """Execute the task end-to-end, including testing and deployment."""
-        if task_metadata['is_project']:
-            print("[EXECUTION] Generating project...")
-            # Call project generation logic
-            # Run tests
-            print("[EXECUTION] Running tests...")
-            # Deploy project
-            print("[EXECUTION] Deploying project...")
-            return "Project deployed successfully."
-        elif task_metadata['is_code']:
-            print("[EXECUTION] Generating code snippet...")
-            # Call code generation logic
-            return "Code snippet generated successfully."
-        else:
-            print("[EXECUTION] Task type not supported.")
-            return "Task execution failed."

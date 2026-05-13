@@ -62,14 +62,18 @@ If you see a file required by the CONTRACT but missing from the PROJECT FILES, y
 If perfect, output: SCORE: 100
 """
         
-        response = self.client.chat.completions.create(
-            model=config.AGENT_MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1
-        )
-        
-        raw = response.choices[0].message.content
-        return raw
+        try:
+            response = self.client.chat.completions.create(
+                model=config.AGENT_MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1
+            )
+            raw = response.choices[0].message.content
+            return raw
+        except Exception as e:
+            print(f"[!] Critic evaluation failed: {e}")
+            # Fallback to a deterministic rejection so the loop handles it gracefully
+            return "SCORE: 0\n[REPAIR: JSON]\n{\"targets\": []}\n[/REPAIR]"
 
     def _deterministic_preflight(self, contract, file_map):
         """Return precise repair targets for obvious issues before LLM review."""

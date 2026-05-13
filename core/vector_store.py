@@ -294,7 +294,6 @@ class HypervectorDB:
     def register_feature_pack(self, feature_name, pack_dict):
         """Stores a feature pack in the deterministic registry (not HDC-encoded)."""
         self.feature_packs[feature_name] = pack_dict
-        print(f"[*] Brain: Registered feature pack '{feature_name}' ({len(pack_dict.get('files', []))} files).")
 
     def get_feature_pack(self, feature_name):
         """Retrieves a feature pack by exact name from the deterministic registry."""

@@ -59,7 +59,6 @@ class NeurosymbolicAgent:
         self.local_llm = LocalLLM(model_name=config.LOCAL_LLM_TYPE) if config.ENABLE_LOCAL_LLM else None
             
         self.messages = []
-        self._persona_cache = {}
         
         # Elite V12 Subsystems
         self.reasoning_engine = ReasoningEngine(client=self.agent_client, brain=self.brain)
@@ -96,8 +95,7 @@ class NeurosymbolicAgent:
         self.economic_mode = EconomicMode()
         self.swarm_mode = SwarmMode()
         self._ensure_builtin_feature_packs()
-        
-        self._pre_cache_shards()
+        # Subsystems initialized. Ready for orchestration.
 
     def _ensure_builtin_feature_packs(self):
         """Make built-in feature packs available without a manual injection step."""
@@ -119,18 +117,15 @@ class NeurosymbolicAgent:
         )
         return feedback
 
-    def _pre_cache_shards(self):
-        shards = self._load_shards_from_disk()
-        for s in shards:
-            self._persona_cache[s['name']] = s
-
-    def chat(self, user_input, mode_override=None):
+    def chat(self, user_input, mode_override=None, stream_callback=None):
         """Elite V10: Orchestrated chat loop using modular subsystems."""
         with tracker.track("TASK_ROUTING"):
             meta = self.router.route(user_input)
         request_mode = mode_override or meta['mode']
         selected_model = self.model_router.route(user_input)
-        early_project = meta.get('is_project') or self._is_project_request(user_input, intent=meta['intent'], confidence=meta['confidence'])
+        if request_mode == "FAST" and getattr(config, "FAST_MODEL_NAME", None):
+            selected_model = config.FAST_MODEL_NAME
+        early_project = meta.get('is_project')
         early_code_fallback = None if early_project else self.code_fallbacks.match(user_input, meta)
         if meta.get('is_code') and early_code_fallback and not user_input.lstrip().startswith("ROLE:"):
             print(f"[*] Code Fallback: using deterministic {early_code_fallback.filename}")
@@ -185,10 +180,12 @@ class NeurosymbolicAgent:
         # 1. Cache & Stability
         with tracker.track("SEMANTIC_CACHE_LOOKUP"):
             cache_hit = None
-            if not meta.get('is_dynamic'):
+            if not meta.get('is_dynamic') and not early_project and not meta.get('is_code'):
                 norm_query = re.sub(r'[^\w\s]', '', user_input).lower().strip()
                 cache_hit = self.brain.search_cache(norm_query, threshold=config.CACHE_THRESHOLD)
         if cache_hit:
+            if stream_callback:
+                stream_callback(cache_hit['raw'])
             raw = cache_hit['raw'] + "\n[Semantic Cache Hit]"
             return make_response(raw, cache_hit['clean'], status="cached", metadata={**meta, "cache": "semantic"})
 
@@ -206,11 +203,16 @@ class NeurosymbolicAgent:
             
             web_text = None
             if config.ENABLE_WEB_SEARCH and (meta['intent'] == "SEARCH" or (not vector_results and '?' in user_input)):
-                web_text = self.searcher.search(user_input)
+                try:
+                    web_text = self.searcher.search(user_input)
+                except Exception as e:
+                    print(f"[!] Web search failed: {e}")
+                    web_text = ""
 
         # 3. Context & Inference
         with tracker.track("CONTEXT_ASSEMBLY"):
-            memory_results = {'session': session_mems, 'facts': graph_facts, 'web': web_text}
+            failures = self.failure_memory.get_recent_failures(limit=2)
+            memory_results = {'session': session_mems, 'facts': graph_facts, 'web': web_text, 'failures': failures}
             
             # Speculative Tuning: Let Erasmus X 'fine-tune' instructions for this task
             distilled_tuning = None
@@ -224,33 +226,64 @@ class NeurosymbolicAgent:
                 messages[0]['content'] += distilled_tuning
 
         print(f"Erasmus is thinking ({request_mode} mode)...", flush=True)
-        try:
-            with tracker.track("LLM_INFERENCE"):
-                response = self.client.chat.completions.create(
-                    model=selected_model,
-                    messages=messages,
-                    temperature=0.3 if request_mode == "DEEP" else 0.1,
-                    max_tokens=config.DEEP_MODE_OUTPUT_TOKENS if request_mode == "DEEP" else config.FAST_MODE_OUTPUT_TOKENS,
-                    timeout=config.REQUEST_TIMEOUT,
-                )
-                raw_response = response.choices[0].message.content
-        except Exception as e:
-            print(f"[!] Primary LLM Failed: {e}. Falling back to Local SLM...")
-            if self.local_llm:
-                try:
-                    # FAST mode: use short focused prompt to avoid GPT-2 context overflow
-                    if request_mode == "FAST":
-                        slm_prompt = f"Answer this question concisely: {user_input}"
+        raw_response = ""
+        
+        if early_project or meta.get('is_project'):
+            print("[*] Project route confirmed. Bypassing conversational LLM inference.")
+            raw_response = "[Autonomous Project Initialization]"
+            if stream_callback:
+                stream_callback("Initializing Neurosymbolic Project Sandbox...\n")
+        else:
+            try:
+                with tracker.track("LLM_INFERENCE"):
+                    is_reasoning_model = "minimax" in selected_model.lower() or "o1" in selected_model.lower() or "r1" in selected_model.lower()
+                    response = self.client.chat.completions.create(
+                        model=selected_model,
+                        messages=messages,
+                        temperature=0.3 if request_mode == "DEEP" else 0.1,
+                        max_tokens=config.DEEP_MODE_OUTPUT_TOKENS if (request_mode == "DEEP" or is_reasoning_model) else config.FAST_MODE_OUTPUT_TOKENS,
+                        timeout=config.REQUEST_TIMEOUT,
+                        stream=bool(stream_callback)
+                    )
+                    if stream_callback:
+                        raw_response = ""
+                        for chunk in response:
+                            if not getattr(chunk, "choices", None):
+                                continue
+                            delta = chunk.choices[0].delta
+                            content = ""
+                            # NVIDIA NIM / Reasoning models support
+                            if getattr(delta, "reasoning_content", None) is not None:
+                                content += delta.reasoning_content
+                            if delta.content is not None:
+                                content += delta.content
+                                
+                            if content:
+                                raw_response += content
+                                stream_callback(content)
                     else:
-                        # DEEP mode: include recent context but truncated to avoid overflow
-                        ctx = "\n".join([m['content'][:200] for m in messages[-3:]])
-                        slm_prompt = f"{ctx}\n\nAnswer: "
-                    raw_response = self.local_llm.generate(slm_prompt, max_new_tokens=200)
-                except Exception as llm_e:
-                    print(f"[!] Local LLM generation error: {llm_e}")
-                    raw_response = f"I encountered a local model error processing your request."
-            else:
-                raw_response = "I encountered an error and could not generate a response."
+                        msg = response.choices[0].message
+                        raw_response = getattr(msg, "reasoning_content", "") or ""
+                        if msg.content:
+                            raw_response += ("\n\n" if raw_response else "") + msg.content
+            except Exception as e:
+                print(f"[!] Primary LLM Failed: {e}. Falling back to Local SLM...")
+                if self.local_llm:
+                    try:
+                        # FAST mode: use short focused prompt to avoid GPT-2 context overflow
+                        if request_mode == "FAST":
+                            slm_prompt = f"Answer this question concisely: {user_input}"
+                        else:
+                            # DEEP mode: include recent context but truncated to avoid overflow
+                            ctx = "\n".join([m['content'][:200] for m in messages[-3:]])
+                            slm_prompt = f"{ctx}\n\nAnswer: "
+                        raw_response = self.local_llm.generate(slm_prompt, max_new_tokens=200)
+                    except Exception as llm_e:
+                        print(f"[!] Local LLM generation error: {llm_e}")
+                        raw_response = f"I encountered a local model error processing your request."
+                else:
+                    raw_response = "I encountered an error and could not generate a response."
+            
         raw_response = raw_response or ""
         stable_fallback = factual_fallback(user_input)
         if stable_fallback and raw_response.strip().startswith("I encountered an error"):
@@ -301,6 +334,10 @@ class NeurosymbolicAgent:
         self.messages.append({"role": "user", "content": user_input})
         self.messages.append({"role": "assistant", "content": clean_ans})
         self.distributed_brain.add_document(f"Context: {user_input}. Summary: {clean_ans}")
+        
+        # Add to HDC Semantic Cache for instant future lookups
+        if self.brain and not meta.get('is_dynamic') and not early_project and not meta.get('is_code'):
+            self.brain.add_to_cache(user_input, raw_response, clean_ans)
         
         if config.ENABLE_REASONING_ENGINE:
              self.reasoning_engine.analyze_task(user_input, messages + [{"role": "assistant", "content": raw_response}], "SUCCESS")
@@ -443,7 +480,11 @@ class NeurosymbolicAgent:
         graph_plan = self.graph_reasoner.plan_project(user_input)
         with tracker.track("PROJECT_RESEARCH"):
             search_query = f"Architecture and file structure for {user_input}"
-            web_ref = self.searcher.search(search_query)
+            try:
+                web_ref = self.searcher.search(search_query)
+            except Exception as e:
+                print(f"[!] Project research failed: {e}")
+                web_ref = ""
         
         project_name = re.sub(r'[^a-z0-9]', '_', user_input.lower())[:20]
         project_dir = f"v12_{project_name}_{int(time.time())}"
@@ -464,13 +505,28 @@ class NeurosymbolicAgent:
                  
             if web_ref: planner_prompt += f"\n\nRESEARCH:\n{web_ref[:1000]}"
             
-            response = self.client.chat.completions.create(
-                model=self.model_router.route(user_input),
-                messages=[{"role": "system", "content": prompts.SYSTEM_PROMPT}, {"role": "user", "content": planner_prompt}],
-                temperature=0.1,
-                timeout=config.REQUEST_TIMEOUT,
-            )
-            plan_text = response.choices[0].message.content
+            recent_failures = self.failure_memory.get_recent_failures(limit=3)
+            if recent_failures:
+                planner_prompt += "\n\n[PAST BUILD FAILURES (Avoid these mistakes)]\n"
+                for rf in recent_failures:
+                    planner_prompt += f"- {rf['request']}: {rf['failures']}\n"
+            
+            if config.ENABLE_REASONING_ENGINE:
+                lessons = self.reasoning_engine.get_relevant_lessons(user_input)
+                if lessons:
+                    planner_prompt += "\n\n[REASONING LESSONS]\n" + "\n".join(f"- {l}" for l in lessons)
+            
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model_router.route(user_input),
+                    messages=[{"role": "system", "content": prompts.SYSTEM_PROMPT}, {"role": "user", "content": planner_prompt}],
+                    temperature=0.1,
+                    timeout=config.REQUEST_TIMEOUT,
+                )
+                plan_text = response.choices[0].message.content
+            except Exception as e:
+                print(f"[!] Planning generation failed: {e}")
+                plan_text = f"Fallback Plan Generated due to API error: {e}"
         
         # Save PLAN.md
         with open(os.path.join(sandbox_path, "PLAN.md"), "w", encoding="utf-8") as f:
@@ -1074,12 +1130,6 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
 
         return saved, failures
 
-    def _is_project_request(self, text, intent=None, confidence=0):
-        single_file_code = self.router._is_single_file_code_request(text)
-        if single_file_code:
-            return False
-        return self.router._is_project_like(text, intent=intent, confidence=confidence)
-
     def _validate_single_file_behavior(self, user_input, filename):
         if "factorial" not in user_input.lower() or not filename.endswith(".py"):
             return True
@@ -1140,15 +1190,3 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
         print(f"[*] Manifest Audit: {len(manifest)} valid files identified.")
         if manifest: print(f"    Target List: {', '.join(manifest[:5])}...")
         return manifest
-
-    def _load_shards_from_disk(self):
-        root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        shards = []
-        for cat in ['agents', 'skills']:
-            path = os.path.join(root, 'shards', cat)
-            if not os.path.exists(path): continue
-            for f in os.listdir(path):
-                if f.endswith('.md'):
-                    with open(os.path.join(path, f), 'r', encoding='utf-8') as sf:
-                        shards.append({'name': f.replace('.md', ''), 'content': sf.read(), 'category': cat})
-        return shards

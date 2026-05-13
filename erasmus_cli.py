@@ -66,16 +66,17 @@ class AgentState:
     panel_border: str = "#252a33"
     command_border: str = "#526170"
     header_border: str = "#00bcd4"
-    live_status: str = "online"
-    latency_ms: int = 42
-    tokens: str = "12.4k"
-    agents: int = 4
+    live_status: str = "offline"
+    index_status: str = "indexing"
+    latency_ms: int = 0
+    tokens: str = "0"
+    total_tokens_count: int = 0
+    agents: int = 1
     memory_state: str = "stable"
     recent_tasks: list[str] = field(
         default_factory=lambda: [
-            "Loaded neurosymbolic agent workspace",
-            "Indexed core runtime modules",
-            "Prepared terminal assistant shell",
+            "Initializing Agentic OS...",
+            "Checking workspace integrity...",
         ]
     )
     active_modules: list[str] = field(default_factory=list)
@@ -99,14 +100,35 @@ class ErasmusTerminalUI:
             "/status": self.command_status,
             "/run": self.command_run,
             "/files": self.command_files,
+            "/chat": self.command_chat,
             "/clear": self.command_clear,
             "/exit": self.command_exit,
         }
+        self.agent = None
+        self.brain = None
         self.running = True
+
+    def _ensure_agent(self) -> None:
+        if self.agent is not None:
+            return
+            
+        from main import build_agent
+        with self.console.status("[bold cyan]Connecting to the Neurosymbolic Agent Pipeline...", spinner="dots"):
+            try:
+                self.agent, self.brain = build_agent()
+                self.state.live_status = "online"
+                self.state.index_status = "ready"
+                self.state.remember("Connected to Neurosymbolic Pipeline")
+                self.state.remember("Vector store synchronized")
+            except Exception as e:
+                self.state.live_status = "error"
+                self.state.index_status = "failed"
+                self.console.print(f"[bold red]Failed to load Agent Brain:[/bold red] {e}")
 
     def run(self) -> None:
         """Start the dashboard and command loop."""
         self.refresh_active_modules()
+        self._ensure_agent()
         self.command_clear([])
         self.render_dashboard()
 
@@ -132,11 +154,39 @@ class ErasmusTerminalUI:
         self.state.commands_run += 1
 
         if not raw.startswith("/"):
-            self.state.remember(f"Captured note: {raw[:72]}")
-            self.print_response(
-                "Message captured",
-                "This UI is a local control surface. Use slash commands to inspect or run project tasks.",
-            )
+            self.state.remember(f"Chat request: {raw[:30]}...")
+            self._ensure_agent()
+            if self.agent:
+                try:
+                    streamed_text = Text("", style="green")
+                    panel = Panel(streamed_text, title="Erasmus X (thinking...)", box=box.ROUNDED, border_style=self.state.command_border, padding=(1, 2))
+                    
+                    with Live(panel, console=self.console, refresh_per_second=15, transient=True) as live:
+                        def live_update_callback(chunk: str):
+                            streamed_text.append(chunk)
+                            live.update(Panel(streamed_text, title="Erasmus X (thinking...)", box=box.ROUNDED, border_style=self.state.command_border, padding=(1, 2)))
+
+                        start_time = time.perf_counter()
+                        result = self.agent.chat(raw, stream_callback=live_update_callback)
+
+                    raw_response, clean_ans = result
+                    duration = time.perf_counter() - start_time
+                    self.state.latency_ms = int(duration * 1000)
+                    from utils.text_utils import count_tokens
+                    response_text = clean_ans if clean_ans else raw_response
+                    input_tokens = count_tokens(raw)
+                    output_tokens = count_tokens(response_text)
+                    self.state.total_tokens_count += (input_tokens + output_tokens)
+                    if self.state.total_tokens_count > 1000:
+                        self.state.tokens = f"{self.state.total_tokens_count / 1000:.1f}k"
+                    else:
+                        self.state.tokens = str(self.state.total_tokens_count)
+                    self.print_response("Erasmus X", response_text, style="green")
+                    
+                    if self.state.commands_run % 3 == 0 and self.brain:
+                        self.brain.save()
+                except Exception as e:
+                    self.print_response("Error", str(e), style="red")
             return
 
         command, *args = raw.split()
@@ -184,8 +234,9 @@ class ErasmusTerminalUI:
         meta.append("  model ", style="dim")
         meta.append(self.state.model, style="bold cyan")
         meta.append("  status ", style="dim")
-        meta.append("● ", style="green")
-        meta.append(self.state.live_status, style="green")
+        status_color = "green" if self.state.live_status == "online" else "dim"
+        meta.append("● ", style=status_color)
+        meta.append(self.state.live_status, style=status_color)
         meta.append("  workspace ", style="dim")
         meta.append(self.root.name, style="white")
 
@@ -208,8 +259,11 @@ class ErasmusTerminalUI:
         table.add_column("file", ratio=2)
         table.add_column("state", ratio=1)
         for index, module in enumerate(self.state.active_modules[:6]):
-            status = "active" if index == 0 else "idle"
-            color = self.state.accent if index == 0 else "blue"
+            # Use real modification times to determine "active" status
+            mtime = os.path.getmtime(self.root / module)
+            is_recent = (time.time() - mtime) < 3600 # modified in last hour
+            status = "active" if is_recent else "idle"
+            color = self.state.accent if is_recent else "blue"
             table.add_row(self.module_text(module), self.status_text(status, color))
         if not self.state.active_modules:
             table.add_row(Text("No Python modules found", style="yellow"), self.status_text("idle", "dim"))
@@ -227,8 +281,15 @@ class ErasmusTerminalUI:
         table.add_row("Platform", platform.system())
         table.add_row("Source files", str(py_files))
         table.add_row("Tests", str(test_files))
-        table.add_row("Index", self.status_text("indexing", "yellow"))
-        table.add_row("Agent", self.status_text("online", "green"))
+        
+        index_color = "green" if self.state.index_status == "ready" else "yellow"
+        table.add_row("Index", self.status_text(self.state.index_status, index_color))
+        
+        status_color = "green" if self.state.live_status == "online" else "dim"
+        if self.state.live_status == "error":
+            status_color = "red"
+            
+        table.add_row("Agent", self.status_text(self.state.live_status, status_color))
         table.add_row("Session", f"{int(uptime.total_seconds())}s")
 
         progress = Progress(
@@ -308,10 +369,9 @@ class ErasmusTerminalUI:
         table.add_row("/run tests", "Run test/run_all_tests.py locally")
         table.add_row("/run scan", "Refresh active module index")
         table.add_row("/run agent", "Stream a local agent orchestration trace")
-        table.add_row("/run demo", "Emit a simulated assistant planning response")
-        table.add_row("/run pulse", "Preview the animated online status pulse")
         table.add_row("/run boot", "Stream a staged workspace activity trace")
         table.add_row("/files", "Show active project modules")
+        table.add_row("/chat", "Open a dedicated full-screen chat session")
         table.add_row("/clear", "Clear the terminal and redraw the dashboard")
         table.add_row("/exit", "Leave the Erasmus X terminal UI")
         self.console.print(table)
@@ -334,33 +394,27 @@ class ErasmusTerminalUI:
             self.print_response("Scan complete", f"{len(self.state.active_modules)} active modules are tracked.")
             return
 
-        if target == "demo":
-            self.state.remember("Generated local planning trace")
-            self.print_response(
-                "Local assistant trace",
-                "Plan: inspect context, choose the smallest viable change, verify behavior, then report the result.",
-                stream=True,
-            )
-            return
-
         if target == "boot":
+            py_files = len(list(self.root.rglob("*.py")))
             self.state.remember("Streamed workspace boot activity")
             self.stream_activity(
                 [
-                    "[+] Loaded neurosymbolic agent workspace...",
+                    f"[+] Loaded neurosymbolic agent workspace ({py_files} modules)...",
                     "    indexing embeddings...",
                     "    syncing orchestration graph...",
                     "    mapping active tools...",
-                    "    Erasmus X control surface ready.",
                 ]
             )
+            self._ensure_agent()
+            self.console.print("[green]    Erasmus X control surface ready.[/green]")
             return
 
         if target == "agent":
+            self._ensure_agent()
             self.state.remember("Streamed agent orchestration trace")
             self.stream_activity(
                 [
-                    "[+] Spawning local planning agent...",
+                    f"[+] Spawning local planning agent (status: {self.state.live_status})...",
                     "    reading active module graph...",
                     "    selecting implementation path...",
                     "    preparing verification loop...",
@@ -369,9 +423,6 @@ class ErasmusTerminalUI:
             )
             return
 
-        if target == "pulse":
-            self.state.remember("Previewed live status pulse")
-            self.pulse_status()
             return
 
         if target == "tests":
@@ -410,8 +461,60 @@ class ErasmusTerminalUI:
         if self.state.commands_run:
             self.render_dashboard()
 
+    def command_chat(self, _: list[str]) -> None:
+        self.state.remember("Opened dedicated chat session")
+        self._ensure_agent()
+        os.system("cls" if os.name == "nt" else "clear")
+        
+        self.console.print(self.header_panel())
+        self.console.print()
+        self.console.print("[dim]Type your message below. Type [bold]/exit[/bold] to return to the dashboard.[/dim]\n")
+        
+        while self.running:
+            try:
+                prompt = Text("chat", style=f"bold {self.state.accent}")
+                prompt.append(" > ", style="dim")
+                raw = Prompt.ask(prompt, console=self.console).strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+                
+            if not raw:
+                continue
+            if raw.lower() in ["/exit", "/quit"]:
+                break
+                
+            if self.agent:
+                try:
+                    streamed_text = Text("", style="green")
+                    panel = Panel(streamed_text, title="Erasmus X (thinking...)", box=box.ROUNDED, border_style=self.state.command_border, padding=(1, 2))
+                    
+                    with Live(panel, console=self.console, refresh_per_second=15, transient=True) as live:
+                        def live_update_callback(chunk: str):
+                            streamed_text.append(chunk)
+                            live.update(Panel(streamed_text, title="Erasmus X (thinking...)", box=box.ROUNDED, border_style=self.state.command_border, padding=(1, 2)))
+
+                        result = self.agent.chat(raw, stream_callback=live_update_callback)
+
+                    raw_response, clean_ans = result
+                    response_text = clean_ans if clean_ans else raw_response
+                    self.print_response("Erasmus X", response_text, style="green")
+                    
+                    self.state.commands_run += 1
+                    if self.state.commands_run % 3 == 0 and self.brain:
+                        self.brain.save()
+                except Exception as e:
+                    self.print_response("Error", str(e), style="red")
+            else:
+                self.console.print("[red]Agent is not connected.[/red]")
+                
+        # Return to main dashboard
+        self.command_clear([])
+
     def command_exit(self, _: list[str]) -> None:
         self.running = False
+        if self.brain:
+            with self.console.status("Persisting Brain before exit..."):
+                self.brain.save()
         self.console.print(Panel("Session closed. Erasmus X control surface offline.", box=box.ROUNDED, border_style=self.state.panel_border))
 
     def print_response(self, title: str, message: str, style: str = "white", stream: bool = False) -> None:
@@ -454,6 +557,7 @@ class ErasmusTerminalUI:
             "/run boot",
             "/run pulse",
             "/files",
+            "/chat",
             "/clear",
             "/exit",
         ]

@@ -66,8 +66,18 @@ class ContextBuilder:
                 lessons_block = prompts.CONTEXT_LESSONS + "\n".join([f"- {l}" for l in relevant_lessons]) + "\n"
                 budget -= count_tokens(lessons_block)
 
+        # 6. Failure Memory (Mistake Avoidance)
+        failures_block = ""
+        failures = memory_results.get('failures', [])
+        if failures and budget > 300:
+            failures_block = "### RECENT BUILD FAILURES (Avoid these mistakes)\n"
+            for f in failures:
+                failures_block += f"- Request: {f['request']}\n  Failures: {f['failures']}\n"
+            budget -= count_tokens(failures_block)
+
         # Final Assembly
         content_layers = []
+        if failures_block: content_layers.append(failures_block)
         if lessons_block: content_layers.append(lessons_block)
         if state_block: content_layers.append(state_block)
         content_layers.extend(knowledge_blocks)

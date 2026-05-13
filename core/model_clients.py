@@ -8,7 +8,7 @@ from openai import OpenAI
 from core import config
 
 
-OPENAI_COMPATIBLE_PROVIDERS = {"local", "openai", "deepseek", "kimi"}
+OPENAI_COMPATIBLE_PROVIDERS = {"local", "openai", "deepseek", "kimi", "nvidia"}
 
 
 def create_model_client(role: str = "main"):
