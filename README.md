@@ -446,6 +446,16 @@ For best performance:
 
 ## Running
 
+### Advanced Terminal UI (Recommended)
+
+For a high-fidelity interactive experience with real-time streaming, status panels, and token tracking:
+
+```bash
+python erasmus_cli.py
+```
+
+### Basic Startup Menu
+
 ```bash
 python main.py
 ```
