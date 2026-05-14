@@ -267,7 +267,7 @@ class NeurosymbolicAgent:
                     messages=messages,
                     temperature=0.3 if request_mode == "DEEP" else 0.1,
                     max_tokens=config.DEEP_MODE_OUTPUT_TOKENS if (request_mode == "DEEP" or is_reasoning_model) else config.FAST_MODE_OUTPUT_TOKENS,
-                    timeout=config.REQUEST_TIMEOUT,
+                    timeout=config.REQUEST_TIMEOUT or 300,
                     stream=bool(stream_callback)
                 )
                 if stream_callback:
@@ -308,7 +308,7 @@ class NeurosymbolicAgent:
                  messages.append({"role": "assistant", "content": raw_response})
                  messages.append({"role": "user", "content": f"RE-PROMPT: {err}"})
                  try:
-                     repair_resp = self.client.chat.completions.create(model=selected_model, messages=messages, temperature=0.1)
+                     repair_resp = self.client.chat.completions.create(model=selected_model, messages=messages, temperature=0.1, timeout=config.REQUEST_TIMEOUT or 300)
                      raw_response = repair_resp.choices[0].message.content
                  except: pass
 
@@ -518,13 +518,23 @@ class NeurosymbolicAgent:
                     model=self.model_router.route(user_input),
                     messages=[{"role": "system", "content": prompts.SYSTEM_PROMPT}, {"role": "user", "content": planner_prompt}],
                     temperature=0.1,
-                    timeout=config.REQUEST_TIMEOUT,
+                    timeout=config.REQUEST_TIMEOUT or 300,
                     stream=True
                 )
                 plan_chunks = []
+                last_chunk = ""
+                repetition_count = 0
                 for chunk in response:
                     text = chunk.choices[0].delta.content or ""
                     if text:
+                        if text == last_chunk:
+                            repetition_count += 1
+                            if repetition_count > 10: # Break infinite repetition
+                                self._log("\n[!] Planning stream repetition detected. Force breaking.", stream_callback)
+                                break
+                        else:
+                            repetition_count = 0
+                        last_chunk = text
                         plan_chunks.append(text)
                         if stream_callback:
                             stream_callback(text)
@@ -833,7 +843,7 @@ FILES:
                 # Elite V19: Stall Detection
                 current_hash = hashlib.md5(project_content_blob.encode()).hexdigest()
                 if current_hash == last_project_hash:
-                     self._log("[!] Project State Stall Detected (No meaningful delta). Terminating build loop.", stream_callback)
+                     self._log("[!] Project State Stall Detected (No meaningful delta). Terminating build loop early.", stream_callback)
                      break
                 last_project_hash = current_hash
 
@@ -844,6 +854,7 @@ FILES:
                          self._log(f"[!] Fidelity Scanner found {len(fid_targets)} structural/stack violations. Skipping LLM Critic.", stream_callback)
                          critic_report = "SCORE: 70\n[REPAIR: JSON]\n" + json.dumps({"targets": fid_targets}) + "\n[/REPAIR]"
                     else:
+                         self._log(f"[*] Critiquing {len(file_map)} files...", stream_callback)
                          critic_report = self.critic.evaluate(user_input, contract, file_map)
                 
                 if "SCORE: 100" in critic_report:

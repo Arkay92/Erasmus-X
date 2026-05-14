@@ -171,7 +171,14 @@ class ErasmusTerminalUI:
                     with Live(panel, console=self.console, refresh_per_second=15, transient=True) as live:
                         def live_update_callback(chunk: str):
                             streamed_text.append(chunk)
-                            live.update(Panel(streamed_text, title="Erasmus X (thinking...)", box=box.ROUNDED, border_style=self.state.command_border, padding=(1, 2)))
+                            # Truncate view if it gets too long for the Live panel
+                            lines = streamed_text.plain.split("\n")
+                            if len(lines) > 25:
+                                truncated = "\n".join(["... (truncated)"] + lines[-24:])
+                                display_text = Text(truncated, style="green")
+                            else:
+                                display_text = streamed_text
+                            live.update(Panel(display_text, title="Erasmus X (thinking...)", box=box.ROUNDED, border_style=self.state.command_border, padding=(1, 2)))
 
                         start_time = time.perf_counter()
                         result = self.agent.chat(raw, stream_callback=live_update_callback)
@@ -498,7 +505,14 @@ class ErasmusTerminalUI:
                     with Live(panel, console=self.console, refresh_per_second=15, transient=True) as live:
                         def live_update_callback(chunk: str):
                             streamed_text.append(chunk)
-                            live.update(Panel(streamed_text, title="Erasmus X (thinking...)", box=box.ROUNDED, border_style=self.state.command_border, padding=(1, 2)))
+                            # Truncate view if it gets too long for the Live panel
+                            lines = streamed_text.plain.split("\n")
+                            if len(lines) > 25:
+                                truncated = "\n".join(["... (truncated)"] + lines[-24:])
+                                display_text = Text(truncated, style="green")
+                            else:
+                                display_text = streamed_text
+                            live.update(Panel(display_text, title="Erasmus X (thinking...)", box=box.ROUNDED, border_style=self.state.command_border, padding=(1, 2)))
 
                         result = self.agent.chat(raw, stream_callback=live_update_callback)
 

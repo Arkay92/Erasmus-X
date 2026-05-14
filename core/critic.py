@@ -66,7 +66,8 @@ If perfect, output: SCORE: 100
             response = self.client.chat.completions.create(
                 model=config.AGENT_MODEL_NAME,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1
+                temperature=0.1,
+                timeout=config.REQUEST_TIMEOUT or 300
             )
             raw = response.choices[0].message.content
             return raw

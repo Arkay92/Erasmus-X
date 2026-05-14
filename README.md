@@ -18,6 +18,8 @@ Erasmus X is a modular autonomous agent framework designed to combine:
 - **Benchmarking + self-evaluation**
 - **Tool use + web/search workflows**
 - **Multi-language software generation**
+- **NVIDIA NIM & Local LLM optimization**
+- **V12/V14 Build Pipeline with Capability Contracts**
 
 It is built to operate as a practical software-building and research agent rather than only a chat model.
 
@@ -85,6 +87,9 @@ Can generate complete software projects across stacks.
 - Verification scripts
 - Syntax validation
 - Repair loops
+- **Capability Contracts (V12)**
+- **Build Critic (V13)**
+- **Autonomous Synthesis (V14)**
 - Project packaging
 
 ---
@@ -275,9 +280,30 @@ REMOTE_AGENT_MODEL_TYPE=claude-3-5-haiku-latest
 ANTHROPIC_API_KEY=...
 ```
 
-DeepSeek uses `REMOTE_MODEL_PROVIDER=deepseek` and `DEEPSEEK_API_KEY`.
-Kimi/Moonshot uses `REMOTE_MODEL_PROVIDER=kimi` and `KIMI_API_KEY`.
 Base URLs can be overridden with `MODEL_API_BASE_URL`, `AGENT_MODEL_API_BASE_URL`, or provider-specific variables such as `DEEPSEEK_API_BASE_URL`.
+
+### NVIDIA NIM Setup
+
+Erasmus X is optimized for high-throughput reasoning using NVIDIA NIM (NVIDIA Inference Microservices).
+
+To use NVIDIA NIM:
+1. Get an API key from [NVIDIA build](https://build.nvidia.com/).
+2. Configure your `.env` or shell:
+
+```bash
+REMOTE_MODEL_PROVIDER=openai
+API_BASE_URL=https://integrate.api.nvidia.com/v1
+OPENAI_API_KEY=nvapi-your-key-here
+MODEL_NAME=meta/llama-3.1-405b-instruct # Or your preferred NIM model
+```
+
+For the internal agent model (Cognitive Shards):
+```bash
+REMOTE_AGENT_MODEL_PROVIDER=openai
+AGENT_API_BASE_URL=https://integrate.api.nvidia.com/v1
+AGENT_API_KEY=nvapi-your-key-here
+AGENT_MODEL_NAME=meta/llama-3.1-8b-instruct
+```
 
 ---
 
@@ -463,4 +489,5 @@ It is an evolving autonomous builder, researcher, debugger and reasoning system.
 
 Current state:
 
-**Advanced prototype approaching real autonomous software engineer territory.**
+**V14: Autonomous Neurosymbolic Architect.**
+Capable of high-fidelity project convergence through strict contract enforcement and multi-stage critic loops.
