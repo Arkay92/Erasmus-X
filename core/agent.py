@@ -5,6 +5,9 @@ import time
 import json
 import subprocess
 import sys
+import threading
+from typing import List, Dict, Any, Optional, Callable
+from concurrent.futures import ThreadPoolExecutor
 from core import config, prompts
 from core.compressor import PromptCompressor
 from core.sandbox import SandboxManager
@@ -69,6 +72,7 @@ class NeurosymbolicAgent:
             local_llm=self.local_llm,
             max_context_tokens=config.DEEP_MODE_CONTEXT_TOKENS,
         )
+        self._stream_lock = threading.Lock()
         
         # Elite V10 Subsystems
         self.context_builder = ContextBuilder(compressor=self.compressor, reasoning_engine=self.reasoning_engine)
@@ -236,14 +240,21 @@ class NeurosymbolicAgent:
                 messages[0]['content'] += distilled_tuning
 
         if request_mode == "DEEP" and not early_project:
-            return self._dispatch_route(user_input, messages, meta, memory_results, stream_callback)
+            return self._dispatch_route(user_input, messages, meta, memory_results, stream_callback, selected_model)
             
         if early_project:
             print("[*] Project route confirmed. Bypassing conversational LLM inference.", flush=True)
             project_dir, plan_text = self._project_planning_flow(user_input, meta, web_ref=memory_results.get('web'))
             return self._autonomous_coding_loop(user_input, messages, plan_text, base_dir=project_dir, stream_callback=stream_callback)
         else:
-            return self._simple_llm_call(messages, stream_callback, selected_model=selected_model, request_mode=request_mode)
+            return self._simple_llm_call(
+                messages, stream_callback, 
+                selected_model=selected_model, 
+                request_mode=request_mode,
+                user_input=user_input,
+                meta=meta,
+                cache_key=exact_cache_key
+            )
 
     def _simple_llm_call(self, messages, stream_callback, selected_model=config.MODEL_NAME, request_mode="FAST", user_input="", meta=None, cache_key=None):
         """Helper for standard LLM inference with full post-processing."""
@@ -270,8 +281,11 @@ class NeurosymbolicAgent:
                             stream_callback(content)
                 else:
                     msg = response.choices[0].message
-                    raw_response = getattr(msg, "reasoning_content", "") or ""
-                    if msg.content: raw_response += ("\n\n" if raw_response else "") + msg.content
+                    rc = getattr(msg, "reasoning_content", None)
+                    raw_response = rc if isinstance(rc, str) else ""
+                    content = getattr(msg, "content", None)
+                    if isinstance(content, str): 
+                        raw_response += ("\n\n" if raw_response else "") + content
         except Exception as e:
             print(f"[!] LLM Call Failed: {e}")
             raw_response = factual_fallback(user_input) or "I encountered an error and could not generate a response."
@@ -298,6 +312,7 @@ class NeurosymbolicAgent:
                      raw_response = repair_resp.choices[0].message.content
                  except: pass
 
+        raw_response = raw_response or ""
         clean_ans = re.sub(r'\[FACT\].*', '', raw_response, flags=re.DOTALL).strip()
         if not clean_ans: clean_ans = raw_response
         
@@ -341,11 +356,11 @@ class NeurosymbolicAgent:
              return self._simple_llm_call(messages, stream_callback, request_mode="DEEP", user_input=user_input, meta=meta, selected_model=selected_model)
              
         elif op == "PROJECT":
-             project_dir, plan_text = self._project_planning_flow(user_input, meta, web_ref=memory_results.get('web'))
+             project_dir, plan_text = self._project_planning_flow(user_input, meta, web_ref=memory_results.get('web'), stream_callback=stream_callback)
              return self._autonomous_coding_loop(user_input, messages, plan_text, base_dir=project_dir, stream_callback=stream_callback)
              
         elif op == "CODE":
-             project_dir, plan_text = self._project_planning_flow(user_input, meta)
+             project_dir, plan_text = self._project_planning_flow(user_input, meta, stream_callback=stream_callback)
              return self._autonomous_coding_loop(user_input, messages, plan_text, base_dir=project_dir, stream_callback=stream_callback)
         
         elif op == "DELEGATE":
@@ -355,102 +370,7 @@ class NeurosymbolicAgent:
              return make_response(raw, "Task decentralized.", status="ok", metadata={**meta, "delegated": True})
              
         return self._simple_llm_call(messages, stream_callback, request_mode="DEEP", user_input=user_input, meta=meta, selected_model=selected_model)
-            
 
-
-        # 5. History & Sync
-        if not raw_response or not raw_response.strip():
-             print("[!] Language model returned an empty response. Using blank fallback.")
-             stable_answer = factual_fallback(user_input)
-             if stable_answer:
-                  raw_response = stable_answer
-             elif self.local_llm:
-                  try:
-                      raw_response = self.local_llm.generate("Answer succinctly: " + user_input, max_new_tokens=128)
-                  except Exception as e:
-                      raw_response = "I encountered an error and could not generate a response."
-             else:
-                  raw_response = "I encountered an error and could not generate a response. Please try with deeper context."
-             raw_response = raw_response or "I encountered an error and could not generate a response."
-                  
-        # 5b. SLM Repetition Guard: GPT-2 often generates degenerate loops
-        if raw_response:
-            lines = [l.strip() for l in raw_response.split('\n') if l.strip()]
-            if len(lines) > 3:
-                # Check if >60% of lines are duplicates of the first non-empty line
-                first_line = lines[0]
-                dupes = sum(1 for l in lines if l == first_line)
-                if dupes > len(lines) * 0.6:
-                    raw_response = first_line  # Collapse to single instance
-                    
-        clean_ans = re.sub(r'\[FACT\].*', '', raw_response, flags=re.DOTALL).strip()
-        if not clean_ans:
-             clean_ans = raw_response
-             
-        self.messages.append({"role": "user", "content": user_input})
-        self.messages.append({"role": "assistant", "content": clean_ans})
-        
-        # Log to Persistent Episodic Memory (convo_chain)
-        convo_entry = {
-            "timestamp": time.time(),
-            "query": user_input,
-            "raw_output": raw_response,
-            "clean_response": clean_ans
-        }
-        self.brain.add_convo_step(convo_entry)
-        
-        # Add to HDC Semantic Cache for instant future lookups
-        if self.brain and not meta.get('is_dynamic') and not early_project and not meta.get('is_code'):
-            self.brain.add_to_cache(user_input, raw_response, clean_ans)
-        
-        if config.ENABLE_REASONING_ENGINE:
-             self.reasoning_engine.analyze_task(user_input, messages + [{"role": "assistant", "content": raw_response}], "SUCCESS")
-        
-        # 6. Multi-Agent Delegation Flow
-        if "DELEGATE:" in raw_response:
-             print("[*] Orchestrator: Detected delegation request. Spawning subagents...")
-             delegations = re.findall(r"DELEGATE:\s*\[([\w\s]+)\]\s*(.*?)(?=DELEGATE:|$)", raw_response, re.DOTALL)
-             if delegations:
-                  results = self.subagent_manager.delegate_and_collect(delegations)
-                  summary = "\n".join([f"SUBAGENT {r} REPORT: {v[:200]}..." for r, v in results.items()])
-                  raw = f"ORCHESTRATOR REPORT: Task decentralized.\n{summary}"
-                  return make_response(raw, "Task decentralized across subagents.", status="ok", metadata={**meta, "delegated": True})
-
-        # 7. Project Flow
-        is_project = meta.get('is_project')
-        if is_project:
-            project_dir, project_summary = self._project_planning_flow(user_input, messages)
-            return self._autonomous_coding_loop(user_input, messages, project_summary, base_dir=project_dir, stream_callback=stream_callback)
-        elif meta['is_code'] and not user_input.lstrip().startswith("ROLE:"):
-            # Single-File Code Task: Direct validate and save (bypass V12 Project Loop)
-            response_for_files = raw_response
-            fallback = self.code_fallbacks.match(user_input, meta)
-            if "[FILE:" not in response_for_files:
-                if fallback:
-                    print(f"[*] Code Fallback: using deterministic {fallback.filename}")
-                    response_for_files = fallback.as_file_block()
-                    raw_response = response_for_files
-            saved, failures = self._extract_and_save_files(response_for_files)
-            if not saved and failures and fallback:
-                print(f"[*] Code Fallback: replacing invalid model output with {fallback.filename}")
-                raw_response = fallback.as_file_block()
-                saved, failures = self._extract_and_save_files(raw_response)
-            if saved and fallback and not self._validate_single_file_behavior(user_input, saved[0]):
-                print(f"[*] Code Fallback: replacing behavior-invalid output with {fallback.filename}")
-                raw_response = fallback.as_file_block()
-                saved, failures = self._extract_and_save_files(raw_response)
-            status = f"Code Task Complete. Saved: {', '.join(saved) if saved else 'None'}"
-            if failures: status += f" | Failures: {len(failures)}"
-            return make_response(raw_response, status, files=saved, status="error" if failures else "ok", errors=list(failures.values()), metadata=meta)
-
-        if self.request_cache and exact_cache_key:
-            self.request_cache.set(
-                exact_cache_key,
-                {"raw": raw_response, "clean": clean_ans},
-                ttl=getattr(config, "REQUEST_CACHE_TTL_SECONDS", 24 * 3600),
-            )
-
-        return make_response(raw_response, clean_ans, status="ok", metadata=meta)
 
     def _try_scaffold_project(self, user_input, meta):
         # Clean matching pack detection via brain
@@ -470,9 +390,7 @@ class NeurosymbolicAgent:
 
         project_name = re.sub(r'[^a-z0-9]', '_', user_input.lower())[:20]
         project_dir = f"v12_{project_name}_{int(time.time())}"
-        print(f"[Project Phase] Using registered scaffold: {scaffold.name}")
-        self.sandbox.create_sandbox(project_dir)
-        print(f"[*] Project Planning Complete: {project_dir}")
+        self._log(f"[*] Project Planning Complete: {project_dir}")
         manifest = list(scaffold.files)
         blocks = []
         # Swarm Mode decommissioned in favor of autonomous planning loop
@@ -537,32 +455,42 @@ class NeurosymbolicAgent:
             failures["verification:commands"] = "Scaffold has no CLI verification commands."
         return failures
 
-    def _project_planning_flow(self, user_input, meta, web_ref=None):
-        """Elite V10: 11-step project pipeline initialization."""
-        print("[*] Project Phase: Planning & Manifesting...", flush=True)
-        graph_plan = self.graph_reasoner.plan_project(user_input)
-        if not web_ref:
-            with tracker.track("PROJECT_RESEARCH"):
-                search_query = f"Architecture and file structure for {user_input}"
-                try:
-                    web_ref = self.searcher.search(search_query)
-                except Exception as e:
-                    print(f"[!] Project research failed: {e}")
-                    web_ref = ""
+    def _project_planning_flow(self, user_input, meta, web_ref=None, stream_callback=None):
+        """Elite V10: 11-step project pipeline initialization with Parallel Acceleration."""
+        self._log("[*] Project Phase: Concurrent Initialization (Research + Contract + Graph)...", stream_callback)
         
+        # Parallel Execution of Setup Tasks
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_graph = executor.submit(self.graph_reasoner.plan_project, user_input)
+            future_contract = executor.submit(self.contractor.build, user_input)
+            
+            if not web_ref:
+                search_query = f"Architecture and file structure for {user_input}"
+                future_research = executor.submit(self.searcher.search, search_query)
+            else:
+                future_research = None
+
+            # Collect results
+            self._log("    [*] Waiting for parallel components...", stream_callback)
+            graph_plan = future_graph.result()
+            contract = future_contract.result()
+            if future_research:
+                try:
+                    web_ref = future_research.result()
+                except Exception as e:
+                    self._log(f"    [!] Parallel research failed: {e}", stream_callback)
+                    web_ref = ""
+
         project_name = re.sub(r'[^a-z0-9]', '_', user_input.lower())[:20]
         project_dir = f"v12_{project_name}_{int(time.time())}"
         sandbox_path = self.sandbox.create_sandbox(project_dir)
         
-        # Elite V12: Capability Contract Generation
-        with tracker.track("CONTRACT_GENERATION"):
-            print("[*] V12 Phase: Generating Capability Contract...", flush=True)
-            contract = self.contractor.build(user_input)
-            with open(os.path.join(sandbox_path, "CONTRACT.json"), "w", encoding="utf-8") as f:
-                 json.dump(contract, f, indent=2)
+        # Save Contract
+        with open(os.path.join(sandbox_path, "CONTRACT.json"), "w", encoding="utf-8") as f:
+             json.dump(contract, f, indent=2)
                  
         with tracker.track("PLAN_GENERATION"):
-            print("[*] Phase: Drafting implementation plan...", flush=True)
+            self._log("[*] Phase: Drafting implementation plan (Streaming enabled)...", stream_callback)
             planner_prompt = prompts.PROJECT_PLANNER_PROMPT + f"\n\nUSER REQUEST: {user_input}"
             planner_prompt += f"\n\n[GRAPH PLAN]\n" + "\n".join(f"- {step}" for step in graph_plan[:10])
             planner_prompt += f"\n\n[MANDATORY CONTRACT TARGETS]\nYour plan MUST include these exact files:\n"
@@ -585,22 +513,32 @@ class NeurosymbolicAgent:
                     planner_prompt += "\n\n[REASONING LESSONS]\n" + "\n".join(f"- {l}" for l in lessons)
             
             try:
+                self._log("\n[PLANNING STREAMING START]", stream_callback)
                 response = self.client.chat.completions.create(
                     model=self.model_router.route(user_input),
                     messages=[{"role": "system", "content": prompts.SYSTEM_PROMPT}, {"role": "user", "content": planner_prompt}],
                     temperature=0.1,
                     timeout=config.REQUEST_TIMEOUT,
+                    stream=True
                 )
-                plan_text = response.choices[0].message.content or ""
+                plan_chunks = []
+                for chunk in response:
+                    text = chunk.choices[0].delta.content or ""
+                    if text:
+                        plan_chunks.append(text)
+                        if stream_callback:
+                            stream_callback(text)
+                plan_text = "".join(plan_chunks)
+                self._log("\n[PLANNING STREAMING COMPLETE]", stream_callback)
             except Exception as e:
-                print(f"[!] Planning generation failed: {e}")
+                self._log(f"[!] Planning generation failed: {e}", stream_callback)
                 plan_text = f"Fallback Plan Generated due to API error: {e}"
         
         # Save PLAN.md
         with open(os.path.join(sandbox_path, "PLAN.md"), "w", encoding="utf-8") as f:
             f.write(plan_text)
             
-        print(f"[*] Project Planning Complete: {project_dir}")
+        self._log(f"[*] Project Planning Complete: {project_dir}", stream_callback)
         return project_dir, plan_text
 
     def _run_synthesis_loop(self, user_input, history):
@@ -687,20 +625,42 @@ class NeurosymbolicAgent:
         missing_files = [f for f in manifest if f not in saved]
         missing_str = ", ".join(missing_files) if missing_files else "None"
         
-        summary_prompt = f"""[REPORT GENERATOR]
-Build Status: {status}
-Compliance: {compliance:.1f}% ({done}/{total} files)
-Files Saved: {', '.join(saved)}
-Missing Targets: {missing_str}
-Failures: {failures}
+        summary = ""
+        if status == "SUCCESS":
+            # Generate content-aware summary
+            file_samples = []
+            for f in saved[:5]: # Take first 5 files for context
+                fpath = os.path.join(scratch_dir, f)
+                try:
+                    with open(fpath, 'r', encoding='utf-8') as f_in:
+                        content = f_in.read()
+                        file_samples.append(f"[FILE: {f}]\n{content[:500]}...")
+                except: pass
+            
+            files_context = "\n".join(file_samples)
+            summary_prompt = f"""[EXECUTIVE SUMMARY GENERATOR]
+Based on the following files generated for the project '{base_dir}', write a 1-2 paragraph blunt executive summary of the content. 
+Focus on what the business plan/application actually proposes or implements.
 
-Write a 2-para blunt summary. If compliance is low, state explicitly that the scaffold is incomplete and not runnable.
+FILES:
+{files_context}
 """
-        fallback_summary = (
-            f"Build {status.lower()} with {done}/{total} manifest files validated. "
-            f"Missing targets: {missing_str}. Failures: {failures or 'None'}."
-        )
-        summary = fallback_summary
+            try:
+                resp = self.client.chat.completions.create(
+                    model=self.model_router.route("summary"),
+                    messages=[{"role": "system", "content": "You are a blunt project analyst."}, {"role": "user", "content": summary_prompt}],
+                    temperature=0.3,
+                    timeout=20
+                )
+                summary = resp.choices[0].message.content
+            except Exception as e:
+                summary = f"Build success with {done}/{total} manifest files validated. Missing targets: {missing_str}. Failures: {failures or 'None'}."
+        else:
+            summary = (
+                f"Build {status.lower()} with {done}/{total} manifest files validated. "
+                f"Missing targets: {missing_str}. Failures: {failures or 'None'}."
+            )
+
         return f"### PROJECT BUILD REPORT: {base_dir}\n**Status**: {status}\n**Compliance**: {compliance:.1f}%\n**Missing**: {missing_str}\n\n" + summary
 
     def _extract_saved_files_from_report(self, report):
@@ -799,7 +759,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
         if recalled_cap and recalled_cap.get('type') == 'SHARD':
             pack = self.brain.get_feature_pack(recalled_cap['name'])
             if pack:
-                print(f"[+] Capability Induction: Injecting Brain-recalled pack '{recalled_cap['name']}'")
+                self._log(f"[+] Capability Induction: Injecting Brain-recalled pack '{recalled_cap['name']}'", stream_callback)
                 self._inject_required_pack_files(contract, {}, manifest, base_dir=base_dir)
 
         critical_files = contract.get('critical_files', [])
@@ -807,14 +767,14 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
              critical_files = contract.get('specs', {}).get('critical_files', [])
              
         if critical_files:
-             print(f"[*] Contract Alignment: Synchronizing {len(critical_files)} critical targets.")
+             self._log(f"[*] Contract Alignment: Synchronizing {len(critical_files)} critical targets.", stream_callback)
              for cf in critical_files:
                   cf_norm = cf.replace('\\', '/').lstrip('./')
                   if cf_norm not in manifest and cf_norm.lower() not in ['plan.md', 'contract.json']:
-                       print(f"    [+] Adding mandatory file: {cf_norm}")
+                       self._log(f"    [+] Adding mandatory file: {cf_norm}", stream_callback)
                        manifest.append(cf_norm)
         
-        print(f"[*] V12 Build Stage: FOUNDATION ({len(manifest)} targets identified)")
+        self._log(f"[*] V12 Build Stage: FOUNDATION ({len(manifest)} targets identified)", stream_callback)
         
         while attempts < max_attempts:
             with tracker.track(f"CODING_LOOP_ITERATION_{attempts}"):
@@ -840,7 +800,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
             
             # V12 Status
             graph_status = dep_graph.get_progressive_status()
-            print(f"[*] V12 Progress: {graph_status} | {len(persistent_failures)} errors")
+            self._log(f"[*] V12 Progress: {graph_status} | {len(persistent_failures)} errors", stream_callback)
             
             # Step 1: Check completeness from disk
             actual_saved = self._list_saved_manifest_files(manifest, scratch_dir)
@@ -849,7 +809,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
             if not missing and not persistent_failures:
                 # Elite V13.0: High-Fidelity Build Critic
                 critic_pass_count += 1
-                print(f"[+] Manifest satisfied. Escalating to V13 Build Critic (Pass {critic_pass_count})...")
+                self._log(f"[+] Manifest satisfied. Escalating to V13 Build Critic (Pass {critic_pass_count})...", stream_callback)
                 
                 # V12: Build file map for Critic
                 file_map = self._read_file_map(actual_saved, scratch_dir)
@@ -868,12 +828,12 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                     self._language_map_for_files(file_map.keys()),
                 )
                 if context_state.get("needs_phasing"):
-                    print(f"[*] Context Manager: project split recommended across {len(context_state['phases'])} phases.")
+                    self._log(f"[*] Context Manager: project split recommended across {len(context_state['phases'])} phases.", stream_callback)
 
                 # Elite V19: Stall Detection
                 current_hash = hashlib.md5(project_content_blob.encode()).hexdigest()
                 if current_hash == last_project_hash:
-                     print("[!] Project State Stall Detected (No meaningful delta). Terminating build loop.")
+                     self._log("[!] Project State Stall Detected (No meaningful delta). Terminating build loop.", stream_callback)
                      break
                 last_project_hash = current_hash
 
@@ -881,13 +841,13 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                     # Fast-fail structural drift before expensive critic
                     fid_score, fid_targets = check_fidelity(contract, file_map)
                     if fid_targets:
-                         print(f"[!] Fidelity Scanner found {len(fid_targets)} structural/stack violations. Skipping LLM Critic.")
+                         self._log(f"[!] Fidelity Scanner found {len(fid_targets)} structural/stack violations. Skipping LLM Critic.", stream_callback)
                          critic_report = "SCORE: 70\n[REPAIR: JSON]\n" + json.dumps({"targets": fid_targets}) + "\n[/REPAIR]"
                     else:
                          critic_report = self.critic.evaluate(user_input, contract, file_map)
                 
                 if "SCORE: 100" in critic_report:
-                     print("[+] Build Complete: V13 Critic PASS (Score: 100)")
+                     self._log("[+] Build Complete: V13 Critic PASS (Score: 100)", stream_callback)
                      synced = sync_project_dir(self.brain, self.kg, scratch_dir)
                      if synced:
                           print(f"[+] BrainSync: synced {synced} project data record(s).")
@@ -920,14 +880,14 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                                      rejection_targets.append(fname)
                                      critic_notes[fname] = t['reason']
                           except Exception as e:
-                               print(f"[!] Critic JSON parse error: {e}")
+                                print(f"[!] Critic JSON parse error: {e}")
                      
                      # Fallback to regex if JSON fails
                      if not rejection_targets:
                           rejection_targets = re.findall(r"[`']?([\w\.\/\-\[\]@]+\.\w+)[`']?", critic_report)
                           rejection_targets = [p.replace('\\', '/').lstrip('./') for p in rejection_targets if p in actual_saved]
                           if rejection_targets:
-                               print(f"[*] V14 Feature Induction: Critic requested {len(rejection_targets)} files.")
+                               pass
                           else:
                                # Elite V18: Fidelity Recovery Fallback
                                print("[!] Critic rejected build but provided no specific file targets. Engaging Fidelity Scanner...")
@@ -937,13 +897,11 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                                with tracker.track("FIDELITY_SCAN"):
                                     fid_score, fid_targets = check_fidelity(contract, f_map)
                                if fid_targets:
-                                    print(f"[+] Fidelity Recovery: Identified {len(fid_targets)} missing or drifting files.")
                                     for ft in fid_targets:
                                          fname = ft['file']
                                          rejection_targets.append(fname)
                                          critic_notes[fname] = ft['reason']
                                else:
-                                    print("[!] Fidelity Scan passed but Critic still rejected. Declaring closure failure.")
                                     return make_response(
                                          current_response, 
                                          self._generate_report(base_dir, manifest, actual_saved, {"critic": critic_report}),
@@ -971,12 +929,11 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                                persistent_failures[rt] = f"CRITIC REJECTION ({len(rejection_history[rt])}): {reason}"
                           
                           if induced_new:
-                               print(f"[+] Induced new structural targets: {induced_new}")
-                               current_response += f"\n\n[FEATURE INDUCTION]\nCritic identified missing features: {', '.join(induced_new)}"
+                                self._log(f"[+] Induced new structural targets: {induced_new}", stream_callback)
+                                current_response += f"\n\n[FEATURE INDUCTION]\nCritic identified missing features: {', '.join(induced_new)}"
                           
                           # Elite V19: Absolute Critic Stop
                           if critic_pass_count > config.MAX_CRITIC_CYCLES:
-                                print(f"[!] HARD LIMIT: Exiting after {critic_pass_count} critic cycles.")
                                 return make_response(
                                     current_response, 
                                     self._generate_report(base_dir, manifest, actual_saved, {"critic": "Hard Limit Reached"}),
@@ -989,11 +946,9 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                           # Ensure we have at least 5 more trials if new targets are found
                           if max_attempts - attempts < 5 and not is_authoritative_flush:
                                max_attempts = attempts + 5
-                               print(f"[*] Runway Extended to {max_attempts} attempts for fidelity repair.")
                                 
                           # Elite V17: Hard Critic Cap
                           if critic_pass_count >= config.MAX_CRITIC_CYCLES:
-                               print(f"[!] MAX CRITIC CYCLES ({config.MAX_CRITIC_CYCLES}) REACHED. Engaging Authoritative Flush.")
                                is_authoritative_flush = True
                           else:
                                missing = [f for f in rejection_targets if f not in actual_saved]
@@ -1006,7 +961,6 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                           attempts += 1
                           continue
                      else:
-                           print("[!] Critic rejected build but provided no specific file targets. Declaring failure.")
                            return make_response(
                                current_response, 
                                self._generate_report(base_dir, manifest, actual_saved, {"critic": critic_report}),
@@ -1015,92 +969,82 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                                metadata={"reason": "vague_critic"}
                            )
 
-            # Step 2: Surgical Repair
+            # Step 2: Parallel Surgical Repair
             attempts += 1
-            print(f"[*] Build Attempt {attempts}/{max_attempts}: {len(missing)} missing, {len(persistent_failures)} invalid.")
+            targets = (missing + list(persistent_failures.keys()))[:3] # Process batch of 3
+            self._log(f"[*] Build Attempt {attempts}/{max_attempts}: Processing {len(targets)} files in parallel...", stream_callback)
             
-            target_f = missing[0] if missing else list(persistent_failures.keys())[0]
-            file_attempts[target_f] = file_attempts.get(target_f, 0) + 1
-            
-            # Elite V15: High-Precision Feature Pack Lookup
-            skeleton = get_best_skeleton(target_f, brain=self.brain, stack_context=str(contract).lower())
-            
-            # Step 3: Authoritative Escalation (Elite V17 Hardening)
-            # FORCE logic injection if:
-            # 1. Authoritative flush is active (critic cap hit)
-            # 2. File has failed multiple times (logic stall)
-            # 3. File has been rejected by critic multiple times (depth stall)
-            rejection_count = len(rejection_history.get(target_f, []))
-            
-            if (is_authoritative_flush or file_attempts[target_f] >= 2 or rejection_count >= 2) and skeleton:
-                spath = os.path.join(scratch_dir, target_f)
-                reason = "Flush" if is_authoritative_flush else ("Failure" if file_attempts[target_f] >= 2 else "Rejection")
-                print(f"[!] Authoritative Logic Injection ({reason}): Forcing deep implementation for {target_f}")
-                os.makedirs(os.path.dirname(spath), exist_ok=True)
-                with open(spath, "w", encoding="utf-8") as f_force:
-                    f_force.write(skeleton['content'])
-                forced_files.add(target_f)
+            def repair_file(target_f):
+                file_attempts[target_f] = file_attempts.get(target_f, 0) + 1
+                skeleton = get_best_skeleton(target_f, brain=self.brain, stack_context=str(contract).lower())
                 
-                # Elite V17: Induced Dependencies from forced skeleton
-                new_induced = self._induce_missing_dependencies(skeleton['content'], manifest, dep_graph)
-                
-                # Advance loop explicitly to avoid stalling
-                msg = f"[SYSTEM] Authoritative scaffold forced for {target_f} to break {reason} loop."
-                if new_induced:
-                     msg += f" Induced dependencies: {', '.join(new_induced)}"
-                current_response = msg
-                
-                # Remove from failures to prevent re-repairing in same turn if manifest was huge
-                if target_f in persistent_failures: del persistent_failures[target_f]
-                continue
-            
-            repair_prompt = f"[SURGICAL REPAIR: LOGIC DEPTH V17] File: {target_f}\n"
-            if target_f in persistent_failures: 
-                # Limit failure reason length
-                reason = persistent_failures[target_f][:300]
-                repair_prompt += f"FAILURE: {reason}\n"
-            
-            if critic_pass_count >= 1:
-                # Elite V17: Strict Context Budgeting (Limit Report)
-                report_slice = critic_report[:config.CRITIC_REPORT_LIMIT]
-                repair_prompt += f"CRITIC FEEDBACK: {report_slice}\n"
-            
-            if skeleton: 
-                # Only include skeleton if it's the first attempt or failed multiple times
-                if file_attempts[target_f] == 1 or file_attempts[target_f] > 2:
+                rejection_count = len(rejection_history.get(target_f, []))
+                if (is_authoritative_flush or file_attempts[target_f] >= 2 or rejection_count >= 2) and skeleton:
+                    spath = os.path.join(scratch_dir, target_f)
+                    os.makedirs(os.path.dirname(spath), exist_ok=True)
+                    with open(spath, "w", encoding="utf-8") as f_force:
+                        f_force.write(skeleton['content'])
+                    forced_files.add(target_f)
+                    return f"[SYSTEM] Forced {target_f}"
+
+                repair_prompt = f"[SURGICAL REPAIR: LOGIC DEPTH V17] File: {target_f}\n"
+                if target_f in persistent_failures: 
+                    reason = persistent_failures[target_f][:300]
+                    repair_prompt += f"FAILURE: {reason}\n"
+                if critic_pass_count >= 1:
+                    report_slice = critic_report[:config.CRITIC_REPORT_LIMIT]
+                    repair_prompt += f"CRITIC FEEDBACK: {report_slice}\n"
+                if skeleton and (file_attempts[target_f] == 1 or file_attempts[target_f] > 2):
                      repair_prompt += f"SEED:\n```tsx\n{skeleton['content'][:800]}\n```\n"
+                
+                repair_prompt += "Implement FULL corrected code in [FILE: name] block. PRODUCTION DEPTH ONLY."
+                
+                messages = list(base_messages)
+                plan_summary = initial_response[:400] + "..." if len(initial_response) > 500 else initial_response
+                messages.append({"role": "system", "content": "You are in LOGIC DEPTH mode. Write complete code blocks."})
+                messages.append({"role": "assistant", "content": f"PLAN SUMMARY:\n{plan_summary}\n\n[MANIFEST: {', '.join(manifest[:15])}]"})
+                messages.append({"role": "user", "content": repair_prompt})
+                
+                try:
+                    with self._stream_lock:
+                        self._log(f"\n[CODING STREAM: {target_f}]", stream_callback)
+                        resp = self.client.chat.completions.create(
+                            model=self.model_router.route(user_input),
+                            messages=messages,
+                            temperature=0.1,
+                            timeout=config.REQUEST_TIMEOUT,
+                            stream=True
+                        )
+                        chunks = []
+                        for chunk in resp:
+                            text = chunk.choices[0].delta.content or ""
+                            if text:
+                                chunks.append(text)
+                                if stream_callback: stream_callback(text)
+                    return "".join(chunks)
+                except Exception as exc:
+                    self._log(f"[!] Repair failed for {target_f}: {exc}", stream_callback)
+                    return ""
+
+            # Execute Batch in Parallel
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                results = list(executor.map(repair_file, targets))
             
-            repair_prompt += "Implement FULL corrected code in [FILE: name] block. PRODUCTION DEPTH ONLY."
-            
-            messages = list(base_messages)
-            # Elite V17: Shrink initial plan to save context
-            plan_summary = initial_response[:400] + "..." if len(initial_response) > 500 else initial_response
-            
-            messages.append({"role": "system", "content": "You are in LOGIC DEPTH mode. Write complete code blocks."})
-            messages.append({"role": "assistant", "content": f"PLAN SUMMARY:\n{plan_summary}\n\n[MANIFEST: {', '.join(manifest[:15])}]"})
-            messages.append({"role": "user", "content": repair_prompt})
-            
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model_router.route(user_input),
-                    messages=messages,
-                    temperature=0.1,
-                    timeout=config.REQUEST_TIMEOUT,
-                )
-                current_response = response.choices[0].message.content or ""
-            except Exception as exc:
-                print(f"[!] Repair generation failed: {exc}")
-                current_response = ""
-            if not current_response.strip():
-                print("[!] Empty repair response. Ending project loop early.")
+            combined_response = "\n\n".join(results)
+            if not combined_response.strip():
+                self._log("[!] All repair attempts failed. Ending project loop early.", stream_callback)
                 break
+            
+            current_response = combined_response
+            # Advance to next iteration where saved_files will be extracted from current_response
+            continue
+
             
         # Elite V12: Final Output & Ultimate Critic Gate
         actual_saved = self._list_saved_manifest_files(manifest, scratch_dir)
         file_map = self._read_file_map(actual_saved, scratch_dir)
         
         critic_report = self.critic.evaluate(user_input, contract, file_map)
-        print(f"[*] V12 Final Critic Evaluation: {critic_report.splitlines()[0] if critic_report else 'SCORE: 0'}")
         
         # Persist failure if low score
         if "SCORE: 100" not in critic_report:
@@ -1118,8 +1062,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
                   self.reasoning_engine.analyze_task(user_input, base_messages + [{"role": "assistant", "content": current_response}], "FAILURE", critic_report)
         else:
              synced = sync_project_dir(self.brain, self.kg, scratch_dir)
-             if synced:
-                  print(f"[+] BrainSync: synced {synced} project data record(s).")
+             # Silent sync to keep UI clean
              self.execution_memory.record_build(
                  user_input,
                  contract.get('stack', 'unknown'),
@@ -1308,3 +1251,7 @@ Write a 2-para blunt summary. If compliance is low, state explicitly that the sc
         print(f"[*] Manifest Audit: {len(manifest)} valid files identified.")
         if manifest: print(f"    Target List: {', '.join(manifest[:5])}...")
         return manifest
+    def _log(self, message: str, callback: Callable[[str], None] = None):
+        print(message, flush=True)
+        if callback:
+            callback(f"\n{message}")

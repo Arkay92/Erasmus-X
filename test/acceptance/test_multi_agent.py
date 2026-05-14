@@ -69,16 +69,34 @@ class TestMultiAgentAndDistiller(unittest.TestCase):
         self.assertTrue(found, "Distilled constraints were not found in any LLM call.")
 
     def test_subagent_delegation(self):
-        """Verify that the Orchestrator spawns subagents when DELEGATE: is found."""
+        """Verify that the Orchestrator spawns subagents when DELEGATE is chosen by Dispatcher."""
         user_input = "Build a complex app"
         
-        self.mock_brain.classify_intent.return_value = ("INFO", 0.9)
-        self.mock_brain.search_cache.return_value = None
         self.mock_brain.search.return_value = []
         
-        # Orchestrator's response triggers delegation
-        mock_resp = MagicMock()
-        mock_resp.choices[0].message.content = "DELEGATE: [UI] Design the login page\nDELEGATE: [Backend] Create the login API"
+        # Mock Router to not force a project
+        self.agent.router = MagicMock()
+        self.agent.router.route.return_value = {
+            'intent': 'INFO',
+            'confidence': 0.9,
+            'mode': 'DEEP',
+            'is_code': False,
+            'is_project': False,
+            'is_dynamic': False
+        }
+        
+        # Mock Dispatcher to choose DELEGATE
+        self.agent.dispatcher = MagicMock()
+        self.agent.dispatcher.select_action.return_value = {
+            "operation": "DELEGATE",
+            "thought": "This task is too big, breaking it down.",
+            "payload": {
+                "delegations": [
+                    {"role": "UI", "task": "Design the login page"},
+                    {"role": "Backend", "task": "Create the login API"}
+                ]
+            }
+        }
         
         subagent_ui_resp = MagicMock()
         subagent_ui_resp.choices[0].message.content = "UI Complete."
@@ -86,14 +104,16 @@ class TestMultiAgentAndDistiller(unittest.TestCase):
         subagent_be_resp = MagicMock()
         subagent_be_resp.choices[0].message.content = "Backend Complete."
         
-        self.mock_client.chat.completions.create.side_effect = [mock_resp, subagent_ui_resp, subagent_be_resp]
+        self.mock_client.chat.completions.create.side_effect = [subagent_ui_resp, subagent_be_resp]
         
         # Act
-        raw, clean = self.agent.chat(user_input, mode_override="FAST")
+        raw, clean = self.agent.chat(user_input, mode_override="DEEP")
+        print(f"DEBUG raw: {raw}")
+        print(f"DEBUG clean: {clean}")
         
         # Assert
-        self.assertIn("SUBAGENT UI REPORT: UI Complete.", raw)
-        self.assertIn("SUBAGENT Backend REPORT: Backend Complete.", raw)
+        self.assertIn("- UI: UI Complete.", raw)
+        self.assertIn("- Backend: Backend Complete.", raw)
 
 if __name__ == '__main__':
     unittest.main()

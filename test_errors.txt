@@ -1,0 +1,14 @@
+.F.
+======================================================================
+FAIL: test_subagent_delegation (test_multi_agent.TestMultiAgentAndDistiller)
+Verify that the Orchestrator spawns subagents when DELEGATE is chosen by Dispatcher.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\pc006\Documents\GitHub\EasyTees\Erasmus X\test\acceptance\test_multi_agent.py", line 104, in test_subagent_delegation
+    self.assertIn("- UI: UI Complete.", raw)
+AssertionError: '- UI: UI Complete.' not found in 'Backend Complete.'
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.085s
+
+FAILED (failures=1)

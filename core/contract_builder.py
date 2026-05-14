@@ -25,16 +25,22 @@ class CapabilityContract:
         
         prompt = template + fidelity_guidance + f"\n\nUSER REQUEST: {user_input}"
         
-        try:
-            response = self.client.chat.completions.create(
-                model=config.AGENT_MODEL_NAME,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1
-            )
-            raw = response.choices[0].message.content
-        except Exception as e:
-            print(f"[!] Contract API error: {e}")
-            raw = "{}"
+        for attempt in range(2):
+            try:
+                response = self.client.chat.completions.create(
+                    model=config.AGENT_MODEL_NAME,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    timeout=20
+                )
+                raw = response.choices[0].message.content
+                break
+            except Exception as e:
+                if attempt == 0:
+                    print(f"[*] Contract API attempt 1 failed: {e}. Retrying...")
+                    continue
+                print(f"[!] Contract API error: {e}")
+                raw = "{}"
         
         # Elite V14: Ultimate Robust JSON Extraction
         json_match = re.search(r"(\{.*\})", raw, re.DOTALL)
